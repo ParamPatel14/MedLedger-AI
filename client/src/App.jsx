@@ -77,6 +77,11 @@ function App() {
               <span className="metaText">Dev proxy: /api → 127.0.0.1:8000</span>
             </div>
 
+            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-400/25">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
+              Tailwind is working
+            </div>
+
             {apiMessage && <div className="callout">{apiMessage}</div>}
           </div>
 
