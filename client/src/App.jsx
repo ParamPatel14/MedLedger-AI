@@ -6,6 +6,17 @@ import './App.css'
 
 function App() {
   const [count, setCount] = useState(0)
+  const [apiMessage, setApiMessage] = useState('')
+
+  const callApi = async () => {
+    try {
+      const res = await fetch('/api/hello/Vite')
+      const data = await res.json()
+      setApiMessage(data?.message ?? '')
+    } catch (e) {
+      setApiMessage('Error contacting backend')
+    }
+  }
 
   return (
     <>
@@ -27,6 +38,10 @@ function App() {
         >
           Count is {count}
         </button>
+        <button className="counter" onClick={callApi}>
+          Call Backend
+        </button>
+        {apiMessage && <div>{apiMessage}</div>}
       </section>
 
       <div className="ticks"></div>
