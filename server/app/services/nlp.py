@@ -7,36 +7,14 @@ from dataclasses import dataclass
 from typing import Dict, List, Literal, Optional, Sequence, Tuple
 
 from app.models.schemas import ExtractedEntity, ProcessResponse
+from app.utils.terminology import TerminologyStore, load_terminology_store
+from app.services.gemini import extract_with_gemini
 
 
 logger = logging.getLogger("app.services.nlp")
 
 
 EntityType = Literal["diagnosis", "procedure", "medication"]
-
-
-ABBREVIATIONS: Dict[str, Tuple[EntityType, str]] = {
-    "htn": ("diagnosis", "hypertension"),
-    "dm": ("diagnosis", "diabetes mellitus"),
-    "t2dm": ("diagnosis", "type 2 diabetes mellitus"),
-    "t1dm": ("diagnosis", "type 1 diabetes mellitus"),
-    "copd": ("diagnosis", "chronic obstructive pulmonary disease"),
-    "ckd": ("diagnosis", "chronic kidney disease"),
-    "aki": ("diagnosis", "acute kidney injury"),
-    "cad": ("diagnosis", "coronary artery disease"),
-    "chf": ("diagnosis", "congestive heart failure"),
-    "mi": ("diagnosis", "myocardial infarction"),
-    "cva": ("diagnosis", "stroke"),
-    "tia": ("diagnosis", "transient ischemic attack"),
-    "dvt": ("diagnosis", "deep vein thrombosis"),
-    "pe": ("diagnosis", "pulmonary embolism"),
-    "gerd": ("diagnosis", "gastroesophageal reflux disease"),
-    "uti": ("diagnosis", "urinary tract infection"),
-    "uri": ("diagnosis", "upper respiratory infection"),
-    "afib": ("diagnosis", "atrial fibrillation"),
-    "sob": ("diagnosis", "shortness of breath"),
-    "bp": ("procedure", "blood pressure measurement"),
-}
 
 
 def _clean_text(text: str) -> str:
@@ -78,7 +56,11 @@ class ClinicalNlpPipeline:
     def __init__(self) -> None:
         self._nlp = None
         self._model_info: Optional[ModelInfo] = None
+        self._terminology: TerminologyStore = load_terminology_store()
         self._init_model()
+
+    def _reload_terminology(self) -> None:
+        self._terminology = load_terminology_store(self._terminology)
 
     def _init_model(self) -> None:
         spacy = _try_load_spacy()
@@ -120,17 +102,32 @@ class ClinicalNlpPipeline:
             self._model_info = None
 
     def _abbr_entities(self, text: str) -> List[ExtractedEntity]:
+        self._reload_terminology()
+        diag = self._terminology.payload["diagnosis_abbrev"]
+        meds = self._terminology.payload["medication_abbrev"]
         entities: List[ExtractedEntity] = []
-        for abbr, (etype, canonical) in ABBREVIATIONS.items():
+        for abbr, canonical in diag.items():
             pattern = re.compile(rf"\b{re.escape(abbr)}\b", flags=re.IGNORECASE)
             for m in pattern.finditer(text):
                 entities.append(
                     ExtractedEntity(
-                        type=etype,
+                        type="diagnosis",
                         value=canonical,
                         start=m.start(),
                         end=m.end(),
-                        confidence=0.7,
+                        confidence=0.75,
+                    )
+                )
+        for abbr, canonical in meds.items():
+            pattern = re.compile(rf"\b{re.escape(abbr)}\b", flags=re.IGNORECASE)
+            for m in pattern.finditer(text):
+                entities.append(
+                    ExtractedEntity(
+                        type="medication",
+                        value=canonical,
+                        start=m.start(),
+                        end=m.end(),
+                        confidence=0.75,
                     )
                 )
         return entities
@@ -249,15 +246,80 @@ class ClinicalNlpPipeline:
 
         return entities
 
+    def _normalize_and_fuzzy(self, entities: List[ExtractedEntity]) -> List[ExtractedEntity]:
+        self._reload_terminology()
+        diag_terms = self._terminology.payload["diagnosis_terms"]
+        med_terms = self._terminology.payload["medication_terms"]
+
+        try:
+            from rapidfuzz import fuzz
+            from rapidfuzz import process as rf_process
+        except Exception:
+            return entities
+
+        def _best(query: str, choices: List[str]) -> Optional[tuple[str, float]]:
+            if not query or not choices:
+                return None
+            hit = rf_process.extractOne(query, choices, scorer=fuzz.WRatio)
+            if not hit:
+                return None
+            choice, score, _ = hit
+            if score < 88:
+                return None
+            return str(choice), float(score) / 100.0
+
+        out: List[ExtractedEntity] = []
+        for e in entities:
+            q = e.value.strip().lower()
+            if not q:
+                continue
+            if e.type == "diagnosis":
+                best = _best(q, diag_terms)
+                if best:
+                    out.append(
+                        ExtractedEntity(
+                            type=e.type,
+                            value=best[0],
+                            start=e.start,
+                            end=e.end,
+                            confidence=max(e.confidence, best[1]),
+                        )
+                    )
+                else:
+                    out.append(e)
+            elif e.type == "medication":
+                best = _best(q, med_terms)
+                if best:
+                    out.append(
+                        ExtractedEntity(
+                            type=e.type,
+                            value=best[0],
+                            start=e.start,
+                            end=e.end,
+                            confidence=max(e.confidence, best[1]),
+                        )
+                    )
+                else:
+                    out.append(e)
+            else:
+                out.append(e)
+        return out
+
     def process(self, text: str, include_entities: bool = True) -> ProcessResponse:
         cleaned = _clean_text(text)
         if not cleaned:
             return ProcessResponse(diagnosis=[], procedures=[], medications=[], entities=[] if include_entities else None)
 
         entities = self._abbr_entities(cleaned) + self._keyword_procedures(cleaned) + self._spacy_entities(cleaned)
+        entities = self._normalize_and_fuzzy(entities)
         diagnosis = _unique_preserve_order([e.value for e in entities if e.type == "diagnosis"])
         procedures = _unique_preserve_order([e.value for e in entities if e.type == "procedure"])
         medications = _unique_preserve_order([e.value for e in entities if e.type == "medication"])
+
+        if not diagnosis and not procedures and not medications:
+            fallback = extract_with_gemini(cleaned)
+            if fallback is not None:
+                return fallback
 
         return ProcessResponse(
             diagnosis=diagnosis,
