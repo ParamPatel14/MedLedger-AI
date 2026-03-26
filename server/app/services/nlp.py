@@ -4,7 +4,7 @@ import logging
 import os
 import re
 from dataclasses import dataclass
-from typing import Any, Dict, List, Literal, Optional, Sequence, Tuple
+from typing import Dict, List, Literal, Optional, Sequence, Tuple
 
 from app.models.schemas import ExtractedEntity, ProcessResponse
 
@@ -98,6 +98,11 @@ class ClinicalNlpPipeline:
         for name in [c for c in candidates if c]:
             try:
                 nlp = spacy.load(name)
+                try:
+                    if "abbreviation_detector" not in nlp.pipe_names:
+                        nlp.add_pipe("abbreviation_detector")
+                except Exception:
+                    pass
                 self._nlp = nlp
                 self._model_info = ModelInfo(name=name, source="spacy.load")
                 return
@@ -128,6 +133,48 @@ class ClinicalNlpPipeline:
                         confidence=0.7,
                     )
                 )
+        return entities
+
+    def _keyword_procedures(self, text: str) -> List[ExtractedEntity]:
+        procedure_terms = (
+            "therapy",
+            "surgery",
+            "biopsy",
+            "injection",
+            "transfusion",
+            "dialysis",
+            "intubation",
+            "ventilation",
+            "imaging",
+            "scan",
+            "mri",
+            "ct",
+            "x-ray",
+            "ultrasound",
+        )
+        pattern = re.compile(
+            rf"\b(?:[a-z][a-z0-9\-]{{1,25}}\s+){{0,2}}(?:{'|'.join(map(re.escape, procedure_terms))})\b",
+            flags=re.IGNORECASE,
+        )
+        entities: List[ExtractedEntity] = []
+        for m in pattern.finditer(text):
+            value = m.group(0).strip().lower()
+            value = re.sub(
+                r"^(?:started|start|begin|began|initiated|initiate|underwent|received|given|on)\s+",
+                "",
+                value,
+            ).strip()
+            if not value:
+                continue
+            entities.append(
+                ExtractedEntity(
+                    type="procedure",
+                    value=value,
+                    start=m.start(),
+                    end=m.end(),
+                    confidence=0.6,
+                )
+            )
         return entities
 
     def _spacy_entities(self, text: str) -> List[ExtractedEntity]:
@@ -207,7 +254,7 @@ class ClinicalNlpPipeline:
         if not cleaned:
             return ProcessResponse(diagnosis=[], procedures=[], medications=[], entities=[] if include_entities else None)
 
-        entities = self._abbr_entities(cleaned) + self._spacy_entities(cleaned)
+        entities = self._abbr_entities(cleaned) + self._keyword_procedures(cleaned) + self._spacy_entities(cleaned)
         diagnosis = _unique_preserve_order([e.value for e in entities if e.type == "diagnosis"])
         procedures = _unique_preserve_order([e.value for e in entities if e.type == "procedure"])
         medications = _unique_preserve_order([e.value for e in entities if e.type == "medication"])
@@ -221,4 +268,3 @@ class ClinicalNlpPipeline:
 
 
 pipeline = ClinicalNlpPipeline()
-
