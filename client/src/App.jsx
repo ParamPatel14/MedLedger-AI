@@ -26,6 +26,25 @@ function App() {
     }
   }
 
+  const checkDb = async () => {
+    setApiState('loading')
+    setApiMessage('')
+    try {
+      const res = await fetch('/api/db/health')
+      const data = await res.json()
+      if (data?.ok) {
+        setApiMessage('Database connection OK')
+        setApiState('ok')
+      } else {
+        setApiMessage(data?.error || data?.detail || 'Database check failed')
+        setApiState('error')
+      }
+    } catch {
+      setApiMessage('Error contacting database')
+      setApiState('error')
+    }
+  }
+
   return (
     <div className="appShell">
       <header className="topBar">
@@ -68,6 +87,9 @@ function App() {
               <a className="btn btnGhost" href="#features">
                 See key features
               </a>
+              <button className="btn btnSecondary" onClick={checkDb}>
+                Check database
+              </button>
             </div>
 
             <div className="heroMeta">
