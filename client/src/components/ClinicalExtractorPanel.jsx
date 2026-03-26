@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  extractClinicalEntities,
+  runPipelineText,
   uploadClinicalDocument,
   uploadHandwrittenPrescription,
 } from '../services/api'
@@ -46,7 +46,7 @@ export default function ClinicalExtractorPanel() {
     setNlpState('loading')
     setNlpResult(null)
     try {
-      const data = await extractClinicalEntities(clinicalText)
+      const data = await runPipelineText(clinicalText)
       setNlpResult(data)
       setNlpState('ok')
     } catch (e) {
@@ -182,28 +182,56 @@ export default function ClinicalExtractorPanel() {
 
       {nlpResult && !nlpResult.error && (
         <div className="mt-5 space-y-4 border-t border-slate-100 pt-4">
-          <div>
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Diagnoses</h4>
-            {renderTags(nlpResult.diagnosis, "bg-red-50 text-red-700 border-red-200")}
-          </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Procedures</h4>
-            {renderTags(nlpResult.procedures, "bg-sky-50 text-sky-700 border-sky-200")}
-          </div>
-          <div>
-            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Medications</h4>
-            {renderTags(nlpResult.medications, "bg-emerald-50 text-emerald-700 border-emerald-200")}
-          </div>
-
-          {nlpResult.entities && nlpResult.entities.length > 0 && (
-            <details className="mt-4 group">
-              <summary className="text-xs font-medium text-slate-500 cursor-pointer hover:text-sky-600 transition-colors">
-                View Raw Entity Data
-              </summary>
-              <pre className="mt-2 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
-                {JSON.stringify(nlpResult.entities, null, 2)}
-              </pre>
-            </details>
+          {nlpResult.nlp_model && (
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="px-2 py-1 rounded-md border bg-slate-50 text-slate-700">Model: {nlpResult.nlp_model}</span>
+              {nlpResult.icd_embed_model && (
+                <span className="px-2 py-1 rounded-md border bg-slate-50 text-slate-700">ICD Embeddings: {nlpResult.icd_embed_model}</span>
+              )}
+            </div>
+          )}
+          {(() => {
+            const extracted = nlpResult.extracted || nlpResult
+            return (
+              <>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Diagnoses</h4>
+                  {renderTags(extracted.diagnosis, "bg-red-50 text-red-700 border-red-200")}
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Procedures</h4>
+                  {renderTags(extracted.procedures, "bg-sky-50 text-sky-700 border-sky-200")}
+                </div>
+                <div>
+                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Medications</h4>
+                  {renderTags(extracted.medications, "bg-emerald-50 text-emerald-700 border-emerald-200")}
+                </div>
+                {extracted.entities && extracted.entities.length > 0 && (
+                  <details className="mt-4 group">
+                    <summary className="text-xs font-medium text-slate-500 cursor-pointer hover:text-sky-600 transition-colors">
+                      View Raw Entity Data
+                    </summary>
+                    <pre className="mt-2 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
+                      {JSON.stringify(extracted.entities, null, 2)}
+                    </pre>
+                  </details>
+                )}
+              </>
+            )
+          })()}
+          {nlpResult.codes && nlpResult.codes.length > 0 && (
+            <div className="mt-4">
+              <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">ICD-10 Codes</h4>
+              <div className="flex flex-col gap-2">
+                {nlpResult.codes.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[12px]">
+                    <div className="font-semibold text-slate-800">{c.code}</div>
+                    <div className="text-slate-600 flex-1 px-3">{c.description}</div>
+                    <div className="text-slate-500">score: {(c.confidence ?? 0).toFixed(3)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
       )}

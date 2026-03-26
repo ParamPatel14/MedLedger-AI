@@ -6,6 +6,7 @@ from threading import Lock
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+from pathlib import Path
 
 from app.layers.coding_layer.icd10_dataset import IcdRow, icd10_path, iter_descriptions, load_icd10_rows
 from app.layers.coding_layer.services.embedding_service import (
@@ -29,6 +30,12 @@ def _threshold() -> float:
         return float(os.getenv("ICD_SEMANTIC_THRESHOLD", "0.7"))
     except Exception:
         return 0.7
+
+
+def _embeddings_cache_path() -> Path:
+    base = Path.cwd() / ".tmp" / "icd"
+    base.mkdir(parents=True, exist_ok=True)
+    return base / "icd_embeddings.npy"
 
 
 class IcdMapper:
@@ -56,14 +63,29 @@ class IcdMapper:
             if self._index is not None or self._semantic_failed:
                 return
 
-            vecs = encode_texts(self._descriptions)
-            if vecs is None or getattr(vecs, "size", 0) == 0:
-                self._semantic_failed = True
-                self._embeddings = np.zeros((0, 1), dtype=np.float32)
-                self._index = None
-                return
+            cache = _embeddings_cache_path()
+            loaded: Optional[np.ndarray] = None
+            try:
+                if cache.exists():
+                    loaded = np.load(str(cache))
+            except Exception:
+                loaded = None
 
-            embeddings = normalize(vecs.astype(np.float32))
+            if loaded is None or loaded.size == 0:
+                vecs = encode_texts(self._descriptions)
+                if vecs is None or getattr(vecs, "size", 0) == 0:
+                    self._semantic_failed = True
+                    self._embeddings = np.zeros((0, 1), dtype=np.float32)
+                    self._index = None
+                    return
+                embeddings = normalize(vecs.astype(np.float32))
+                try:
+                    np.save(str(cache), embeddings)
+                except Exception:
+                    pass
+            else:
+                embeddings = normalize(loaded.astype(np.float32))
+
             index = build_faiss_index(embeddings)
             if index is None:
                 self._semantic_failed = True

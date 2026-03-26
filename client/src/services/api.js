@@ -20,6 +20,16 @@ export async function extractClinicalEntities(text) {
   return res.json()
 }
 
+export async function runPipelineText(text) {
+  const res = await fetch('/api/upload/text', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  if (!res.ok) throw new Error(`Pipeline request failed (${res.status})`)
+  return res.json()
+}
+
 async function uploadFile(path, file) {
   const form = new FormData()
   form.append('file', file)
