@@ -12,5 +12,5 @@ scispacy>=0.6.2
 rapidfuzz>=3.9.0
 google-generativeai>=0.7.2
 sentence-transformers>=2.7.0
-faiss-cpu>=1.7.4
+faiss-cpu==1.13.2
 https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_ner_bc5cdr_md-0.5.4.tar.gz

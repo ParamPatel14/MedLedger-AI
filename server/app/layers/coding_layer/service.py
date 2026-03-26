@@ -64,6 +64,9 @@ class IcdCodingService:
         if not query:
             return []
 
+        # Ensure semantic index is ready (retry-safe)
+        self._mapper._ensure_semantic_ready()
+
         # Prefer semantic search via FAISS index
         hits, confident = self._mapper.search_with_fallback(query, top_k=max(1, top_k))
         method = "semantic" if confident else "fuzzy_fallback"

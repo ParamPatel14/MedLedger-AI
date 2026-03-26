@@ -57,10 +57,10 @@ class IcdMapper:
             self._ensure_semantic_ready()
 
     def _ensure_semantic_ready(self) -> None:
-        if self._index is not None or self._semantic_failed:
+        if self._index is not None:
             return
         with self._lock:
-            if self._index is not None or self._semantic_failed:
+            if self._index is not None:
                 return
 
             cache = _embeddings_cache_path()
@@ -145,20 +145,5 @@ class IcdMapper:
                     continue
                 out.append(IcdSemanticHit(code=row.code, description=row.description, score=float(score) / 100.0))
             return out, False
-        if hits[0].score >= _threshold():
-            return hits, True
-
-        try:
-            from rapidfuzz import fuzz
-            from rapidfuzz import process as rf_process
-        except Exception:
-            return hits, False
-
-        fuzzy = rf_process.extract(text, self._descriptions, scorer=fuzz.WRatio, limit=top_k)
-        out: List[IcdSemanticHit] = []
-        for desc, score, _ in fuzzy:
-            row = self._by_description.get(desc)
-            if row is None:
-                continue
-            out.append(IcdSemanticHit(code=row.code, description=row.description, score=float(score) / 100.0))
-        return out or hits, False
+        # Prefer semantic hits; mark confidence flag relative to threshold
+        return hits, bool(hits and hits[0].score >= _threshold())

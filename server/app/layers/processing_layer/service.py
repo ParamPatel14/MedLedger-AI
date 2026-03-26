@@ -74,6 +74,68 @@ def _label_to_type(label: str) -> Optional[EntityType]:
     return None
 
 
+def _keyword_fallback(cleaned: str) -> List[NormalizedEntity]:
+    text = cleaned or ""
+    low = text.lower()
+    patterns: List[Tuple[EntityType, str, str]] = [
+        ("diagnosis", r"\bdiabetes\b", "type 2 diabetes mellitus"),
+        ("diagnosis", r"\b(high\s+)?blood\s+sugar(\s+levels)?\b", "hyperglycemia"),
+        ("diagnosis", r"\bhyperglyc(e|a)mi(a|e)\b", "hyperglycemia"),
+        ("diagnosis", r"\bhtn\b", "hypertension"),
+        ("diagnosis", r"\bhypertension\b", "hypertension"),
+        ("diagnosis", r"\bchest\s+pain\b", "chest pain"),
+        ("diagnosis", r"\b(difficulty\s+breathing|shortness\s+of\s+breath|dyspnea)\b", "shortness of breath"),
+        ("diagnosis", r"\basthma\b", "asthma"),
+        ("diagnosis", r"\bkidney\s+failure(\s+stage\s*(\d+))?\b", "kidney failure"),
+        ("diagnosis", r"\b(heart\s+attack|myocardial\s+infarction)\b", "myocardial infarction"),
+        ("diagnosis", r"\b(urinary\s+tract\s+infection|urinary\s+infection|uti)\b", "urinary tract infection"),
+    ]
+
+    hits: List[NormalizedEntity] = []
+    for etype, pat, norm in patterns:
+        m = re.search(pat, low, flags=re.IGNORECASE)
+        if not m:
+            continue
+        start = int(m.start())
+        end = int(m.end())
+        value = text[start:end].strip().lower()
+        if not value:
+            continue
+
+        normalized_value = norm
+        if pat.startswith(r"\bkidney\s+failure"):
+            stage = ""
+            try:
+                stage = (m.group(2) or "").strip()
+            except Exception:
+                stage = ""
+            if stage:
+                normalized_value = f"chronic kidney disease stage {stage}"
+        hits.append(
+            NormalizedEntity(
+                type=etype,
+                value=value,
+                normalized_value=normalized_value,
+                ontology_id="",
+                start=start,
+                end=end,
+                confidence=0.65,
+            )
+        )
+
+
+    hits.sort(key=lambda e: (e.start, e.end))
+    seen = set()
+    out: List[NormalizedEntity] = []
+    for e in hits:
+        key = (e.type, e.normalized_value)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(e)
+    return out
+
+
 class ClinicalNlpService:
     def __init__(self) -> None:
         self._nlp = None
@@ -165,6 +227,20 @@ class ClinicalNlpService:
                     confidence=float(conf),
                 )
             )
+
+        extra = _keyword_fallback(cleaned)
+        if extra:
+            entities = (entities or []) + extra
+            entities.sort(key=lambda e: (e.start, e.end))
+            seen = set()
+            merged: List[NormalizedEntity] = []
+            for e in entities:
+                key = (e.type, e.normalized_value)
+                if key in seen:
+                    continue
+                seen.add(key)
+                merged.append(e)
+            entities = merged
 
         return cleaned, entities
 
