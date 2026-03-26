@@ -7,7 +7,7 @@ import app.services.parser as parser
 from app.services.gemini import ocr_with_gemini
 from app.services.pipeline import pipeline
 
-router = APIRouter()
+router = APIRouter(prefix="/legacy")
 
 
 @router.post("/upload", response_model=UploadResponse)

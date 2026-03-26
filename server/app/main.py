@@ -6,11 +6,16 @@ from app.utils.logging import configure_logging
 from app.api.router import api_router
 import app.routes.nlp as nlp_routes
 import app.routes.upload as upload_routes
+from app.db.init_db import init_db
 
 
 def create_app() -> FastAPI:
     configure_logging()
     app = FastAPI()
+
+    @app.on_event("startup")
+    def _startup() -> None:
+        init_db()
 
     app.add_middleware(
         CORSMiddleware,

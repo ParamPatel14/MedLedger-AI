@@ -11,8 +11,7 @@ except Exception:
 def get_database_url() -> str | None:
     url = os.getenv("DATABASE_URL") or os.getenv("DB_URL")
     if not url:
-        return None
+        return "sqlite:///./.tmp/medledger.db"
     if url.startswith("postgres://"):
         return "postgresql://" + url[len("postgres://") :]
     return url
-
