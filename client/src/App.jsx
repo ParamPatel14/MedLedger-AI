@@ -1,46 +1,8 @@
-import { useState } from 'react'
 import ClinicalExtractorPanel from './components/ClinicalExtractorPanel'
-import StatusBadges from './components/StatusBadges'
 import TermCatalogPanel from './components/TermCatalogPanel'
-import { checkDatabase, pingApi } from './services/api'
 import './App.css'
 
 function App() {
-  const [apiState, setApiState] = useState('idle')
-  const [dbState, setDbState] = useState('idle')
-  const [apiMessage, setApiMessage] = useState('')
-
-  const callApi = async () => {
-    setApiState('loading')
-    setApiMessage('')
-    try {
-      const data = await pingApi('MedLedger')
-      setApiMessage(data?.message ?? '')
-      setApiState('ok')
-    } catch {
-      setApiMessage('Error contacting backend')
-      setApiState('error')
-    }
-  }
-
-  const checkDb = async () => {
-    setDbState('loading')
-    setApiMessage('')
-    try {
-      const data = await checkDatabase()
-      if (data?.ok) {
-        setApiMessage('Database connection OK')
-        setDbState('ok')
-      } else {
-        setApiMessage(data?.error || data?.detail || 'Database check failed')
-        setDbState('error')
-      }
-    } catch {
-      setApiMessage('Error contacting database')
-      setDbState('error')
-    }
-  }
-
   return (
     <div className="appShell">
       <header className="topBar">
@@ -57,10 +19,7 @@ function App() {
             <a className="navLink" href="#features">
               Features
             </a>
-            <a className="navLink" href="#status">
-              Status
-            </a>
-            <a className="navLink ctaLink" href="#get-started">
+            <a className="navLink ctaLink" href="#extraction-panel">
               Try Extraction
             </a>
           </nav>
@@ -76,19 +35,18 @@ function App() {
             </p>
 
             <div className="heroActions">
-              <button className="btn btnPrimary" onClick={callApi}>
-                Check backend connection
-              </button>
+              <a className="btn btnPrimary" href="#extraction-panel">
+                Start Extraction
+              </a>
               <a className="btn btnGhost" href="#features">
-                See key features
+                Explore Features
               </a>
             </div>
 
-            <StatusBadges apiState={apiState} dbState={dbState} />
-
-            {apiMessage && <div className="callout">{apiMessage}</div>}
-            <ClinicalExtractorPanel />
-            <TermCatalogPanel />
+            <div id="extraction-panel" className="mt-8">
+              <ClinicalExtractorPanel />
+              <TermCatalogPanel />
+            </div>
           </div>
 
           <div className="heroPanel" aria-hidden="true">
@@ -156,40 +114,6 @@ function App() {
               <div className="cardTitle">Fuzzy Matching & Fallback</div>
               <div className="cardBody">
                 Automatically correct typos and OCR errors. Gemini LLM fallback for complex extractions.
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <section className="section" id="status">
-          <div className="sectionHeader">
-            <h2 className="sectionTitle">Environment status</h2>
-            <p className="sectionSubtitle">
-              Quick checks while you build out endpoints.
-            </p>
-          </div>
-
-          <div className="grid2">
-            <div className="card">
-              <div className="cardTitle">Backend</div>
-              <div className="cardBody">
-                Running on <span className="mono">http://127.0.0.1:8000</span>
-              </div>
-              <div className="cardActions">
-                <button className="btn btnSecondary" onClick={callApi}>
-                  Ping API
-                </button>
-              </div>
-            </div>
-            <div className="card">
-              <div className="cardTitle">Frontend</div>
-              <div className="cardBody">
-                Running on <span className="mono">http://localhost:5173</span>
-              </div>
-              <div className="cardActions">
-                <a className="btn btnSecondary" href="#get-started">
-                  Go to Extraction
-                </a>
               </div>
             </div>
           </div>

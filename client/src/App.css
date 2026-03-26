@@ -166,49 +166,6 @@
   background: var(--surface);
 }
 
-.heroMeta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-top: 2px;
-}
-
-.badge {
-  display: inline-flex;
-  padding: 6px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-}
-
-.badge-success {
-  border-color: color-mix(in srgb, var(--success) 40%, var(--border));
-  background: color-mix(in srgb, var(--success) 10%, var(--surface));
-  color: color-mix(in srgb, var(--success) 90%, black);
-}
-
-.badge-danger {
-  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
-  background: color-mix(in srgb, var(--danger) 10%, var(--surface));
-  color: color-mix(in srgb, var(--danger) 90%, black);
-}
-
-.metaText {
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.callout {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  border-radius: 14px;
-  padding: 12px 14px;
-  color: var(--text-strong);
-  box-shadow: var(--shadow-soft);
-}
 
 .heroPanel {
   display: flex;

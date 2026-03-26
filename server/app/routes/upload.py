@@ -2,7 +2,7 @@ from fastapi import APIRouter, File, UploadFile
 
 from app.models.schemas import ProcessResponse, UploadResponse
 import app.services.parser as parser
-from app.services.nlp import pipeline
+from app.services.pipeline import pipeline
 
 router = APIRouter()
 

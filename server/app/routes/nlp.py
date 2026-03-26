@@ -1,7 +1,7 @@
 from fastapi import APIRouter
 
 from app.models.schemas import ProcessRequest, ProcessResponse
-from app.services.nlp import pipeline
+from app.services.pipeline import pipeline
 
 
 router = APIRouter()
