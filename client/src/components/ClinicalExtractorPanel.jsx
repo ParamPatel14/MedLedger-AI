@@ -1,10 +1,46 @@
 import { useState } from 'react'
-import { extractClinicalEntities } from '../services/api'
+import {
+  extractClinicalEntities,
+  uploadClinicalDocument,
+  uploadHandwrittenPrescription,
+} from '../services/api'
 
 export default function ClinicalExtractorPanel() {
+  const [inputMode, setInputMode] = useState('text')
+  const [pdfFile, setPdfFile] = useState(null)
+  const [handwrittenFile, setHandwrittenFile] = useState(null)
+  const [loadState, setLoadState] = useState('idle')
   const [clinicalText, setClinicalText] = useState('')
   const [nlpResult, setNlpResult] = useState(null)
   const [nlpState, setNlpState] = useState('idle')
+
+  const loadFromPdf = async () => {
+    if (!pdfFile) return
+    setLoadState('loading')
+    setNlpResult(null)
+    try {
+      const data = await uploadClinicalDocument(pdfFile)
+      setClinicalText(data?.text || '')
+      setLoadState('ok')
+    } catch (e) {
+      setNlpResult({ error: e?.message || 'Failed to read PDF' })
+      setLoadState('error')
+    }
+  }
+
+  const loadFromHandwritten = async () => {
+    if (!handwrittenFile) return
+    setLoadState('loading')
+    setNlpResult(null)
+    try {
+      const data = await uploadHandwrittenPrescription(handwrittenFile)
+      setClinicalText(data?.text || '')
+      setLoadState('ok')
+    } catch (e) {
+      setNlpResult({ error: e?.message || 'Failed to read handwritten prescription' })
+      setLoadState('error')
+    }
+  }
 
   const run = async () => {
     setNlpState('loading')
@@ -38,14 +74,92 @@ export default function ClinicalExtractorPanel() {
         Clinical Entity Extraction
       </div>
       <p className="text-xs text-slate-500 mb-3">
-        Enter a physician note to extract diagnoses, procedures, and medications.
+        Paste text, upload a PDF, or upload a handwritten prescription to extract diagnoses, procedures, and medications.
       </p>
+
+      <div className="flex flex-wrap gap-2 mb-3">
+        <button
+          type="button"
+          className={`btn ${inputMode === 'text' ? 'btnPrimary text-white' : 'btnGhost'}`}
+          onClick={() => {
+            setInputMode('text')
+            setLoadState('idle')
+          }}
+        >
+          Paste Text
+        </button>
+        <button
+          type="button"
+          className={`btn ${inputMode === 'pdf' ? 'btnPrimary text-white' : 'btnGhost'}`}
+          onClick={() => {
+            setInputMode('pdf')
+            setLoadState('idle')
+          }}
+        >
+          Upload PDF
+        </button>
+        <button
+          type="button"
+          className={`btn ${inputMode === 'handwritten' ? 'btnPrimary text-white' : 'btnGhost'}`}
+          onClick={() => {
+            setInputMode('handwritten')
+            setLoadState('idle')
+          }}
+        >
+          Handwritten
+        </button>
+      </div>
+
+      {inputMode === 'pdf' && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <input
+            type="file"
+            accept="application/pdf"
+            className="block text-sm text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:border-sky-300"
+            onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
+          />
+          <button
+            type="button"
+            className="btn btnSecondary"
+            onClick={loadFromPdf}
+            disabled={!pdfFile || loadState === 'loading'}
+          >
+            {loadState === 'loading' ? 'Reading…' : 'Read PDF'}
+          </button>
+        </div>
+      )}
+
+      {inputMode === 'handwritten' && (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <input
+            type="file"
+            accept="image/*,application/pdf"
+            className="block text-sm text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:border-sky-300"
+            onChange={(e) => setHandwrittenFile(e.target.files?.[0] || null)}
+          />
+          <button
+            type="button"
+            className="btn btnSecondary"
+            onClick={loadFromHandwritten}
+            disabled={!handwrittenFile || loadState === 'loading'}
+          >
+            {loadState === 'loading' ? 'Reading…' : 'Read Prescription'}
+          </button>
+        </div>
+      )}
+
       <textarea
         className="w-full rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-800 outline-none ring-0 placeholder:text-slate-400 focus:border-sky-400 focus:ring-1 focus:ring-sky-400 transition-all"
         rows={4}
         value={clinicalText}
         onChange={(e) => setClinicalText(e.target.value)}
-        placeholder="Paste physician note text here... (example: Pt w/ HTN and diabtes. BP elevated. Started on Metformin.)"
+        placeholder={
+          inputMode === 'pdf'
+            ? 'Click "Read PDF" to load text here, then run extraction...'
+            : inputMode === 'handwritten'
+              ? 'Click "Read Prescription" to load text here, then run extraction...'
+              : 'Paste physician note text here... (example: Pt w/ HTN and diabtes. BP elevated. Started on Metformin.)'
+        }
       />
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="text-xs text-slate-500 font-medium">

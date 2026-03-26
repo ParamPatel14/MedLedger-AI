@@ -20,6 +20,25 @@ export async function extractClinicalEntities(text) {
   return res.json()
 }
 
+async function uploadFile(path, file) {
+  const form = new FormData()
+  form.append('file', file)
+  const res = await fetch(path, {
+    method: 'POST',
+    body: form,
+  })
+  if (!res.ok) throw new Error(`Upload failed (${res.status})`)
+  return res.json()
+}
+
+export async function uploadClinicalDocument(file) {
+  return uploadFile('/api/upload', file)
+}
+
+export async function uploadHandwrittenPrescription(file) {
+  return uploadFile('/api/upload/handwritten', file)
+}
+
 export async function listClinicalTerms() {
   const res = await fetch('/api/nlp/terms')
   if (!res.ok) throw new Error(`Term list failed (${res.status})`)

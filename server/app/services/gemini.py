@@ -65,3 +65,46 @@ def extract_with_gemini(text: str) -> Optional[ProcessResponse]:
         entities=None,
     )
 
+
+def ocr_with_gemini(image_bytes: bytes, mime_type: str) -> Optional[str]:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+
+    try:
+        import google.generativeai as genai
+    except Exception:
+        return None
+
+    genai.configure(api_key=api_key)
+    model_name = os.getenv("GEMINI_VISION_MODEL") or os.getenv("GEMINI_MODEL") or "gemini-1.5-flash"
+    model = genai.GenerativeModel(model_name)
+
+    prompt = (
+        "You are an OCR engine for handwritten medical prescriptions. "
+        "Return only the transcribed text (no markdown, no extra commentary). "
+        "Preserve line breaks where they help readability."
+    )
+
+    try:
+        part: Any
+        try:
+            from google.generativeai.types import Part
+
+            part = Part.from_data(data=image_bytes, mime_type=mime_type)
+        except Exception:
+            part = {"mime_type": mime_type, "data": image_bytes}
+
+        resp = model.generate_content([prompt, part])
+        raw = getattr(resp, "text", "") or ""
+    except Exception:
+        return None
+
+    text = (raw or "").strip()
+    if not text:
+        return None
+
+    text = re.sub(r"^```[a-zA-Z0-9_-]*\s*", "", text)
+    text = re.sub(r"\s*```$", "", text)
+    return text.strip()
+
