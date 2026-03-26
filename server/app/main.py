@@ -55,8 +55,17 @@ def db_health() -> Dict[str, Any]:
             "detail": "Failed to initialize database engine (driver may be missing)",
         }
     try:
+        from sqlalchemy import text
         with engine.connect() as conn:
-            result = conn.execute("SELECT 1").scalar()
+            result = conn.execute(text("SELECT 1")).scalar()
         return {"ok": True, "status": "up", "result": result}
     except Exception as e:
-        return {"ok": False, "status": "down", "error": str(e)}
+        message = str(e)
+        if "could not translate host name" in message or "No such host is known" in message:
+            return {
+                "ok": False,
+                "status": "dns_error",
+                "error": message,
+                "detail": "DNS could not resolve the database hostname from this machine/network.",
+            }
+        return {"ok": False, "status": "down", "error": message}

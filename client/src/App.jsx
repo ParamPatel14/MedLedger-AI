@@ -3,6 +3,7 @@ import './App.css'
 
 function App() {
   const [apiState, setApiState] = useState('idle')
+  const [dbState, setDbState] = useState('idle')
   const [apiMessage, setApiMessage] = useState('')
 
   const apiBadge = useMemo(() => {
@@ -27,23 +28,30 @@ function App() {
   }
 
   const checkDb = async () => {
-    setApiState('loading')
+    setDbState('loading')
     setApiMessage('')
     try {
       const res = await fetch('/api/db/health')
       const data = await res.json()
       if (data?.ok) {
         setApiMessage('Database connection OK')
-        setApiState('ok')
+        setDbState('ok')
       } else {
         setApiMessage(data?.error || data?.detail || 'Database check failed')
-        setApiState('error')
+        setDbState('error')
       }
     } catch {
       setApiMessage('Error contacting database')
-      setApiState('error')
+      setDbState('error')
     }
   }
+
+  const dbBadge = useMemo(() => {
+    if (dbState === 'loading') return { label: 'Checking…', tone: 'neutral' }
+    if (dbState === 'ok') return { label: 'Online', tone: 'success' }
+    if (dbState === 'error') return { label: 'Offline', tone: 'danger' }
+    return { label: 'Not checked', tone: 'neutral' }
+  }, [dbState])
 
   return (
     <div className="appShell">
@@ -95,6 +103,9 @@ function App() {
             <div className="heroMeta">
               <span className={`badge badge-${apiBadge.tone}`}>
                 API: {apiBadge.label}
+              </span>
+              <span className={`badge badge-${dbBadge.tone}`}>
+                DB: {dbBadge.label}
               </span>
               <span className="metaText">Dev proxy: /api → 127.0.0.1:8000</span>
             </div>
