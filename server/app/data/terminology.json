@@ -1,6 +1,16 @@
 {
-  "diagnosis_abbrev": {},
+  "diagnosis_abbrev": {
+    "htn": "hypertension",
+    "dm": "diabetes mellitus"
+  },
   "medication_abbrev": {},
-  "diagnosis_terms": [],
+  "procedure_abbrev": {
+    "bp": "blood pressure measurement"
+  },
+  "diagnosis_terms": [
+    "hypertension",
+    "diabetes",
+    "diabetes mellitus"
+  ],
   "medication_terms": []
 }

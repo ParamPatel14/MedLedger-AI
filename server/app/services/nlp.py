@@ -105,6 +105,7 @@ class ClinicalNlpPipeline:
         self._reload_terminology()
         diag = self._terminology.payload["diagnosis_abbrev"]
         meds = self._terminology.payload["medication_abbrev"]
+        procs = self._terminology.payload["procedure_abbrev"]
         entities: List[ExtractedEntity] = []
         for abbr, canonical in diag.items():
             pattern = re.compile(rf"\b{re.escape(abbr)}\b", flags=re.IGNORECASE)
@@ -124,6 +125,18 @@ class ClinicalNlpPipeline:
                 entities.append(
                     ExtractedEntity(
                         type="medication",
+                        value=canonical,
+                        start=m.start(),
+                        end=m.end(),
+                        confidence=0.75,
+                    )
+                )
+        for abbr, canonical in procs.items():
+            pattern = re.compile(rf"\b{re.escape(abbr)}\b", flags=re.IGNORECASE)
+            for m in pattern.finditer(text):
+                entities.append(
+                    ExtractedEntity(
+                        type="procedure",
                         value=canonical,
                         start=m.start(),
                         end=m.end(),
@@ -305,12 +318,81 @@ class ClinicalNlpPipeline:
                 out.append(e)
         return out
 
+    def _fuzzy_scan_text(self, text: str) -> List[ExtractedEntity]:
+        self._reload_terminology()
+        diag_terms = self._terminology.payload["diagnosis_terms"]
+        med_terms = self._terminology.payload["medication_terms"]
+
+        if not diag_terms and not med_terms:
+            return []
+
+        try:
+            from rapidfuzz import fuzz
+            from rapidfuzz import process as rf_process
+        except Exception:
+            return []
+
+        tokens = list(re.finditer(r"[A-Za-z][A-Za-z0-9\-]{2,}", text))
+        candidates: List[tuple[str, int, int]] = []
+        for i, m in enumerate(tokens):
+            w1 = m.group(0).lower()
+            candidates.append((w1, m.start(), m.end()))
+            if i + 1 < len(tokens):
+                m2 = tokens[i + 1]
+                w2 = m2.group(0).lower()
+                candidates.append((f"{w1} {w2}", m.start(), m2.end()))
+
+        seen = set()
+        entities: List[ExtractedEntity] = []
+        for cand, start, end in candidates[:600]:
+            key = (cand, start, end)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if diag_terms:
+                hit = rf_process.extractOne(cand, diag_terms, scorer=fuzz.WRatio)
+                if hit:
+                    term, score, _ = hit
+                    if score >= 90:
+                        entities.append(
+                            ExtractedEntity(
+                                type="diagnosis",
+                                value=str(term).lower(),
+                                start=start,
+                                end=end,
+                                confidence=float(score) / 100.0,
+                            )
+                        )
+
+            if med_terms:
+                hit = rf_process.extractOne(cand, med_terms, scorer=fuzz.WRatio)
+                if hit:
+                    term, score, _ = hit
+                    if score >= 90:
+                        entities.append(
+                            ExtractedEntity(
+                                type="medication",
+                                value=str(term).lower(),
+                                start=start,
+                                end=end,
+                                confidence=float(score) / 100.0,
+                            )
+                        )
+
+        return entities
+
     def process(self, text: str, include_entities: bool = True) -> ProcessResponse:
         cleaned = _clean_text(text)
         if not cleaned:
             return ProcessResponse(diagnosis=[], procedures=[], medications=[], entities=[] if include_entities else None)
 
-        entities = self._abbr_entities(cleaned) + self._keyword_procedures(cleaned) + self._spacy_entities(cleaned)
+        entities = (
+            self._abbr_entities(cleaned)
+            + self._keyword_procedures(cleaned)
+            + self._spacy_entities(cleaned)
+            + self._fuzzy_scan_text(cleaned)
+        )
         entities = self._normalize_and_fuzzy(entities)
         diagnosis = _unique_preserve_order([e.value for e in entities if e.type == "diagnosis"])
         procedures = _unique_preserve_order([e.value for e in entities if e.type == "procedure"])

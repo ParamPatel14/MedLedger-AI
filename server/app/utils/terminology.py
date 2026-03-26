@@ -12,6 +12,7 @@ logger = logging.getLogger("app.utils.terminology")
 class TerminologyPayload(TypedDict):
     diagnosis_abbrev: Dict[str, str]
     medication_abbrev: Dict[str, str]
+    procedure_abbrev: Dict[str, str]
     diagnosis_terms: List[str]
     medication_terms: List[str]
 
@@ -39,6 +40,7 @@ def load_terminology_store(previous: Optional[TerminologyStore] = None) -> Termi
             payload={
                 "diagnosis_abbrev": {},
                 "medication_abbrev": {},
+                "procedure_abbrev": {},
                 "diagnosis_terms": [],
                 "medication_terms": [],
             },
@@ -53,6 +55,7 @@ def load_terminology_store(previous: Optional[TerminologyStore] = None) -> Termi
         payload: TerminologyPayload = {
             "diagnosis_abbrev": {str(k).lower(): str(v).lower() for k, v in (data.get("diagnosis_abbrev") or {}).items()},
             "medication_abbrev": {str(k).lower(): str(v).lower() for k, v in (data.get("medication_abbrev") or {}).items()},
+            "procedure_abbrev": {str(k).lower(): str(v).lower() for k, v in (data.get("procedure_abbrev") or {}).items()},
             "diagnosis_terms": [str(x).lower() for x in (data.get("diagnosis_terms") or []) if str(x).strip()],
             "medication_terms": [str(x).lower() for x in (data.get("medication_terms") or []) if str(x).strip()],
         }
@@ -65,8 +68,8 @@ def load_terminology_store(previous: Optional[TerminologyStore] = None) -> Termi
             payload={
                 "diagnosis_abbrev": {},
                 "medication_abbrev": {},
+                "procedure_abbrev": {},
                 "diagnosis_terms": [],
                 "medication_terms": [],
             },
         )
-
