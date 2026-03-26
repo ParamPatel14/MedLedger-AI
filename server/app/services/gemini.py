@@ -8,7 +8,7 @@ from app.models.schemas import ProcessResponse
 
 def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
     m = re.search(r"\{[\s\S]*\}", text)
-    if not m:
+    if not m:   
         return None
     try:
         return json.loads(m.group(0))
@@ -27,7 +27,7 @@ def extract_with_gemini(text: str) -> Optional[ProcessResponse]:
         return None
 
     genai.configure(api_key=api_key)
-    model_name = os.getenv("GEMINI_MODEL") or "gemini-1.5-flash"
+    model_name = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
     model = genai.GenerativeModel(model_name)
 
     prompt = (
