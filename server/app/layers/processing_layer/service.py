@@ -55,9 +55,9 @@ def _resolve_model_candidates() -> List[str]:
     preferred = os.getenv("CLINICAL_NLP_MODEL") or os.getenv("SPACY_MODEL") or ""
     candidates = [preferred] if preferred else []
     candidates += [
+        "en_ner_bc5cdr_md",
         "en_core_sci_md",
         "en_core_sci_sm",
-        "en_ner_bc5cdr_md",
         "en_core_web_sm",
     ]
     return [c for c in candidates if c]

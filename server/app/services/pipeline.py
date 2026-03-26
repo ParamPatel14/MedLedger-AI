@@ -71,9 +71,9 @@ class ClinicalNlpPipeline:
         preferred = os.getenv("SPACY_MODEL")
         candidates = [preferred] if preferred else []
         candidates += [
+            "en_ner_bc5cdr_md",
             "en_core_sci_md",
             "en_core_sci_sm",
-            "en_ner_bc5cdr_md",
             "en_core_web_sm",
         ]
 

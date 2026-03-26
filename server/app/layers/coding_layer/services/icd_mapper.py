@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from threading import Lock
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -39,14 +40,47 @@ class IcdMapper:
         self._descriptions = iter_descriptions(rows)
         self._by_description: Dict[str, IcdRow] = {r.description: r for r in rows}
 
-        vecs = encode_texts(self._descriptions) or np.zeros((0, 1), dtype=np.float32)
-        self._embeddings = normalize(vecs)
-        self._index = build_faiss_index(self._embeddings)
+        self._lock = Lock()
+        self._semantic_failed = False
+        self._embeddings: Optional[np.ndarray] = None
+        self._index = None
         self.embed_model = os.getenv("ICD_EMBED_MODEL") or "sentence-transformers/all-MiniLM-L6-v2"
+
+        if os.getenv("ICD_PRECOMPUTE_ON_STARTUP", "0").strip() == "1":
+            self._ensure_semantic_ready()
+
+    def _ensure_semantic_ready(self) -> None:
+        if self._index is not None or self._semantic_failed:
+            return
+        with self._lock:
+            if self._index is not None or self._semantic_failed:
+                return
+
+            vecs = encode_texts(self._descriptions)
+            if vecs is None or getattr(vecs, "size", 0) == 0:
+                self._semantic_failed = True
+                self._embeddings = np.zeros((0, 1), dtype=np.float32)
+                self._index = None
+                return
+
+            embeddings = normalize(vecs.astype(np.float32))
+            index = build_faiss_index(embeddings)
+            if index is None:
+                self._semantic_failed = True
+                self._embeddings = embeddings
+                self._index = None
+                return
+
+            self._embeddings = embeddings
+            self._index = index
 
     def search(self, text: str, top_k: int = 3) -> List[IcdSemanticHit]:
         q = (text or "").strip()
-        if not q or self._index is None or self._embeddings.size == 0:
+        if not q:
+            return []
+
+        self._ensure_semantic_ready()
+        if self._index is None or self._embeddings is None or self._embeddings.size == 0:
             return []
 
         q_vec = encode_text(q)
