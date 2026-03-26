@@ -1,4 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
+import ClinicalExtractorPanel from './components/ClinicalExtractorPanel'
+import StatusBadges from './components/StatusBadges'
+import { checkDatabase, pingApi } from './services/api'
 import './App.css'
 
 function App() {
@@ -6,19 +9,11 @@ function App() {
   const [dbState, setDbState] = useState('idle')
   const [apiMessage, setApiMessage] = useState('')
 
-  const apiBadge = useMemo(() => {
-    if (apiState === 'loading') return { label: 'Checking…', tone: 'neutral' }
-    if (apiState === 'ok') return { label: 'Online', tone: 'success' }
-    if (apiState === 'error') return { label: 'Offline', tone: 'danger' }
-    return { label: 'Not checked', tone: 'neutral' }
-  }, [apiState])
-
   const callApi = async () => {
     setApiState('loading')
     setApiMessage('')
     try {
-      const res = await fetch('/api/hello/MedLedger')
-      const data = await res.json()
+      const data = await pingApi('MedLedger')
       setApiMessage(data?.message ?? '')
       setApiState('ok')
     } catch {
@@ -31,8 +26,7 @@ function App() {
     setDbState('loading')
     setApiMessage('')
     try {
-      const res = await fetch('/api/db/health')
-      const data = await res.json()
+      const data = await checkDatabase()
       if (data?.ok) {
         setApiMessage('Database connection OK')
         setDbState('ok')
@@ -45,13 +39,6 @@ function App() {
       setDbState('error')
     }
   }
-
-  const dbBadge = useMemo(() => {
-    if (dbState === 'loading') return { label: 'Checking…', tone: 'neutral' }
-    if (dbState === 'ok') return { label: 'Online', tone: 'success' }
-    if (dbState === 'error') return { label: 'Offline', tone: 'danger' }
-    return { label: 'Not checked', tone: 'neutral' }
-  }, [dbState])
 
   return (
     <div className="appShell">
@@ -100,15 +87,7 @@ function App() {
               </button>
             </div>
 
-            <div className="heroMeta">
-              <span className={`badge badge-${apiBadge.tone}`}>
-                API: {apiBadge.label}
-              </span>
-              <span className={`badge badge-${dbBadge.tone}`}>
-                DB: {dbBadge.label}
-              </span>
-              <span className="metaText">Dev proxy: /api → 127.0.0.1:8000</span>
-            </div>
+            <StatusBadges apiState={apiState} dbState={dbState} />
 
             <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-400/25">
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
@@ -116,6 +95,7 @@ function App() {
             </div>
 
             {apiMessage && <div className="callout">{apiMessage}</div>}
+            <ClinicalExtractorPanel />
           </div>
 
           <div className="heroPanel" aria-hidden="true">
