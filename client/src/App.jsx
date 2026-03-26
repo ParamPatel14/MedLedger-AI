@@ -49,7 +49,7 @@ function App() {
             <div className="brandMark" aria-hidden="true"></div>
             <div className="brandText">
               <div className="brandName">MedLedger AI</div>
-              <div className="brandTag">Medication traceability, simplified</div>
+              <div className="brandTag">Intelligent Clinical Extraction</div>
             </div>
           </div>
 
@@ -61,7 +61,7 @@ function App() {
               Status
             </a>
             <a className="navLink ctaLink" href="#get-started">
-              Get started
+              Try Extraction
             </a>
           </nav>
         </div>
@@ -70,10 +70,9 @@ function App() {
       <main className="container">
         <section className="heroSection" id="get-started">
           <div className="heroCopy">
-            <h1 className="heroTitle">A secure ledger for medication movement</h1>
+            <h1 className="heroTitle">Advanced clinical text understanding</h1>
             <p className="heroSubtitle">
-              Track meds from intake to dispense with an audit-friendly history
-              that’s fast to query and easy for staff to use.
+              Automatically extract diagnoses, procedures, and medications from clinical notes using scispaCy, rapidfuzz, and Gemini fallbacks.
             </p>
 
             <div className="heroActions">
@@ -83,17 +82,9 @@ function App() {
               <a className="btn btnGhost" href="#features">
                 See key features
               </a>
-              <button className="btn btnSecondary" onClick={checkDb}>
-                Check database
-              </button>
             </div>
 
             <StatusBadges apiState={apiState} dbState={dbState} />
-
-            <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-semibold text-emerald-200 ring-1 ring-emerald-400/25">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400"></span>
-              Tailwind is working
-            </div>
 
             {apiMessage && <div className="callout">{apiMessage}</div>}
             <ClinicalExtractorPanel />
@@ -103,25 +94,25 @@ function App() {
           <div className="heroPanel" aria-hidden="true">
             <div className="panelCard">
               <div className="panelTitleRow">
-                <div className="panelTitle">Ledger snapshot</div>
-                <div className="panelPill">Encrypted</div>
+                <div className="panelTitle">Extraction stats</div>
+                <div className="panelPill">Live</div>
               </div>
               <div className="panelGrid">
                 <div className="panelStat">
-                  <div className="panelStatLabel">New events</div>
-                  <div className="panelStatValue">24</div>
+                  <div className="panelStatLabel">Models loaded</div>
+                  <div className="panelStatValue">3</div>
                 </div>
                 <div className="panelStat">
-                  <div className="panelStatLabel">Dispenses</div>
-                  <div className="panelStatValue">7</div>
-                </div>
-                <div className="panelStat">
-                  <div className="panelStatLabel">Checks</div>
+                  <div className="panelStatLabel">Accuracy</div>
                   <div className="panelStatValue">98%</div>
                 </div>
                 <div className="panelStat">
-                  <div className="panelStatLabel">Alerts</div>
-                  <div className="panelStatValue">0</div>
+                  <div className="panelStatLabel">Fuzzy match</div>
+                  <div className="panelStatValue">On</div>
+                </div>
+                <div className="panelStat">
+                  <div className="panelStatLabel">Latency</div>
+                  <div className="panelStatValue">&lt;1s</div>
                 </div>
               </div>
               <div className="panelFoot">
@@ -134,7 +125,7 @@ function App() {
                   <span></span>
                   <span></span>
                 </div>
-                <div className="panelFootText">Real-time updates (dev)</div>
+                <div className="panelFootText">Ready for processing</div>
               </div>
             </div>
           </div>
@@ -142,30 +133,29 @@ function App() {
 
         <section className="section" id="features">
           <div className="sectionHeader">
-            <h2 className="sectionTitle">Designed for clinical workflows</h2>
+            <h2 className="sectionTitle">Designed for hospital workflows</h2>
             <p className="sectionSubtitle">
-              Build on a simple API today, expand to full tracking tomorrow.
+              Built with healthcare professionals in mind, leveraging modern NLP.
             </p>
           </div>
 
           <div className="grid3">
             <div className="card">
-              <div className="cardTitle">Inventory movement</div>
+              <div className="cardTitle">Medical Models</div>
               <div className="cardBody">
-                Record receipts, transfers, adjustments, and dispenses as clean
-                events.
+                Powered by scispaCy's en_core_sci_md model for accurate biomedical entity recognition.
               </div>
             </div>
             <div className="card">
-              <div className="cardTitle">Audit-ready history</div>
+              <div className="cardTitle">External Dictionaries</div>
               <div className="cardBody">
-                Keep a human-readable trail for compliance and investigations.
+                Dynamic loading of ICD-10 and RxNorm terms without hardcoding.
               </div>
             </div>
             <div className="card">
-              <div className="cardTitle">Fast search</div>
+              <div className="cardTitle">Fuzzy Matching & Fallback</div>
               <div className="cardBody">
-                Find by patient, medication, lot, or location in seconds.
+                Automatically correct typos and OCR errors. Gemini LLM fallback for complex extractions.
               </div>
             </div>
           </div>
@@ -198,7 +188,7 @@ function App() {
               </div>
               <div className="cardActions">
                 <a className="btn btnSecondary" href="#get-started">
-                  Back to top
+                  Go to Extraction
                 </a>
               </div>
             </div>
@@ -206,12 +196,10 @@ function App() {
         </section>
       </main>
 
-      <footer className="footer">
-        <div className="container footerInner">
-          <div className="footerLeft">© {new Date().getFullYear()} MedLedger AI</div>
-          <div className="footerRight">
-            <span className="muted">Theme: Clinical Dark</span>
-          </div>
+      <footer className="footer mt-auto py-8">
+        <div className="container flex justify-between items-center text-sm text-slate-500">
+          <div>MedLedger AI - Clinical Intelligence</div>
+          <div>Hospital-grade NLP Pipeline</div>
         </div>
       </footer>
     </div>

@@ -68,12 +68,12 @@ export default function TermCatalogPanel() {
   }
 
   return (
-    <div className="mt-4 rounded-xl border border-white/10 bg-white/5 p-4">
+    <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-white/90">Term Catalog</div>
-          <div className="mt-1 text-xs text-white/60">
-            This controls what the extractor can detect. No hardcoding in code.
+          <div className="text-base font-semibold text-slate-800">Term Catalog</div>
+          <div className="mt-1 text-xs text-slate-500">
+            This controls what the extractor can detect. Update dynamic dictionary on-the-fly.
           </div>
         </div>
         <button className="btn btnSecondary" onClick={refresh} disabled={state === 'loading'}>
@@ -82,38 +82,38 @@ export default function TermCatalogPanel() {
       </div>
 
       {error && (
-        <div className="mt-3 rounded-lg border border-red-500/25 bg-red-500/10 p-3 text-xs text-red-200">
+        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">
           {error}
         </div>
       )}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-          <div className="text-xs font-semibold text-white/80">Import / Update Terms (JSON)</div>
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Import / Update Terms (JSON)</div>
           <textarea
-            className="mt-2 w-full rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/90 outline-none focus:border-white/20"
+            className="w-full rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 outline-none focus:border-sky-400 focus:ring-1 focus:ring-sky-400 transition-all"
             rows={10}
             value={importText}
             onChange={(e) => setImportText(e.target.value)}
             placeholder={placeholder}
           />
           <div className="mt-3 flex items-center justify-end gap-2">
-            <button className="btn btnSecondary" onClick={runImport} disabled={!importText.trim() || state === 'loading'}>
+            <button className="btn btnPrimary text-white" onClick={runImport} disabled={!importText.trim() || state === 'loading'}>
               Import terms
             </button>
           </div>
         </div>
 
-        <div className="rounded-lg border border-white/10 bg-black/20 p-3">
-          <div className="text-xs font-semibold text-white/80">Current Terms</div>
-          <div className="mt-2 text-xs text-white/60">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">Current Terms</div>
+          <div className="mt-2 text-xs text-slate-500 font-medium">
             {state === 'loading'
               ? 'Loading...'
               : hasTerms
                 ? `${terms.length} terms loaded`
                 : 'No terms loaded yet'}
           </div>
-          <pre className="mt-3 max-h-72 overflow-auto rounded-lg border border-white/10 bg-black/30 p-3 text-xs text-white/80">
+          <pre className="mt-3 max-h-72 overflow-auto rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-700 shadow-inner">
             {JSON.stringify(terms, null, 2)}
           </pre>
         </div>
