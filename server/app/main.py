@@ -10,13 +10,40 @@ except Exception:
     pass
 
 DATABASE_URL = os.getenv("DATABASE_URL") or os.getenv("DB_URL")
+if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = "postgresql://" + DATABASE_URL[len("postgres://"):]
 
 engine = None
+engine_init_error = None
 if DATABASE_URL:
     try:
         from sqlalchemy import create_engine
-        engine = create_engine(DATABASE_URL, pool_pre_ping=True, echo=False, future=True)
-    except Exception:
+        from sqlalchemy.engine import make_url
+        from sqlalchemy.pool import NullPool
+
+        url = make_url(DATABASE_URL)
+        connect_args = {}
+
+        is_pgbouncer = str(url.query.get("pgbouncer", "")).lower() in ("1", "true", "yes", "on")
+        if is_pgbouncer:
+            engine = create_engine(
+                url,
+                pool_pre_ping=True,
+                echo=False,
+                future=True,
+                poolclass=NullPool,
+                connect_args=connect_args,
+            )
+        else:
+            engine = create_engine(
+                url,
+                pool_pre_ping=True,
+                echo=False,
+                future=True,
+                connect_args=connect_args,
+            )
+    except Exception as e:
+        engine_init_error = str(e)
         engine = None
 
 app = FastAPI()
@@ -49,11 +76,14 @@ def db_health() -> Dict[str, Any]:
             "detail": "DATABASE_URL is not set in environment",
         }
     if engine is None:
-        return {
-            "ok": False,
-            "status": "engine_init_failed",
-            "detail": "Failed to initialize database engine (driver may be missing)",
-        }
+        message = engine_init_error or "Failed to initialize database engine"
+        if "No module named" in message:
+            return {
+                "ok": False,
+                "status": "driver_missing",
+                "detail": message,
+            }
+        return {"ok": False, "status": "engine_init_failed", "detail": message}
     try:
         from sqlalchemy import text
         with engine.connect() as conn:
