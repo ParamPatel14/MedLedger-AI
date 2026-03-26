@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import ClinicalExtractorPanel from './components/ClinicalExtractorPanel'
 import StatusBadges from './components/StatusBadges'
+import TermCatalogPanel from './components/TermCatalogPanel'
 import { checkDatabase, pingApi } from './services/api'
 import './App.css'
 
@@ -96,6 +97,7 @@ function App() {
 
             {apiMessage && <div className="callout">{apiMessage}</div>}
             <ClinicalExtractorPanel />
+            <TermCatalogPanel />
           </div>
 
           <div className="heroPanel" aria-hidden="true">

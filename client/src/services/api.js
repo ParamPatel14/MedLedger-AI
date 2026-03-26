@@ -20,6 +20,12 @@ export async function extractClinicalEntities(text) {
   return res.json()
 }
 
+export async function listClinicalTerms() {
+  const res = await fetch('/api/nlp/terms')
+  if (!res.ok) throw new Error(`Term list failed (${res.status})`)
+  return res.json()
+}
+
 export async function importClinicalTerms(terms) {
   const res = await fetch('/api/nlp/terms/import', {
     method: 'POST',
@@ -29,4 +35,3 @@ export async function importClinicalTerms(terms) {
   if (!res.ok) throw new Error(`Term import failed (${res.status})`)
   return res.json()
 }
-

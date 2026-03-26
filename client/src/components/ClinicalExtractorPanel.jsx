@@ -2,9 +2,7 @@ import { useState } from 'react'
 import { extractClinicalEntities } from '../services/api'
 
 export default function ClinicalExtractorPanel() {
-  const [clinicalText, setClinicalText] = useState(
-    'Patient has diabetes and underwent insulin therapy.',
-  )
+  const [clinicalText, setClinicalText] = useState('')
   const [nlpResult, setNlpResult] = useState(null)
   const [nlpState, setNlpState] = useState('idle')
 
@@ -31,7 +29,7 @@ export default function ClinicalExtractorPanel() {
         rows={4}
         value={clinicalText}
         onChange={(e) => setClinicalText(e.target.value)}
-        placeholder="Paste physician note text here..."
+        placeholder="Paste physician note text here... (example: Patient has diabetes and underwent insulin therapy.)"
       />
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="text-xs text-white/60">
@@ -43,7 +41,7 @@ export default function ClinicalExtractorPanel() {
                 ? 'Failed'
                 : ''}
         </div>
-        <button className="btn btnSecondary" onClick={run}>
+        <button className="btn btnSecondary" onClick={run} disabled={!clinicalText.trim() || nlpState === 'loading'}>
           Run extraction
         </button>
       </div>
