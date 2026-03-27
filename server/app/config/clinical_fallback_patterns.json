@@ -1,0 +1,74 @@
+[
+  {
+    "type": "diagnosis",
+    "pattern": "\\bdiabetes\\b",
+    "normalized_value": "type 2 diabetes mellitus",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(high\\s+)?blood\\s+sugar(\\s+levels)?\\b",
+    "normalized_value": "hyperglycemia",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\bhyperglyc(e|a)mi(a|e)\\b",
+    "normalized_value": "hyperglycemia",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\bhtn\\b",
+    "normalized_value": "hypertension",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\bhypertension\\b",
+    "normalized_value": "hypertension",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\bchest\\s+pain\\b",
+    "normalized_value": "chest pain",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(difficulty\\s+breathing|shortness\\s+of\\s+breath|dyspnea)\\b",
+    "normalized_value": "shortness of breath",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\basthma\\b",
+    "normalized_value": "asthma",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\bkidney\\s+failure\\s+stage\\s*3\\b",
+    "normalized_value": "chronic kidney disease stage 3",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\bkidney\\s+failure\\b",
+    "normalized_value": "kidney failure",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(heart\\s+attack|myocardial\\s+infarction)\\b",
+    "normalized_value": "myocardial infarction",
+    "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(urinary\\s+tract\\s+infection|urinary\\s+infection|uti)\\b",
+    "normalized_value": "urinary tract infection",
+    "confidence": 0.65
+  }
+]

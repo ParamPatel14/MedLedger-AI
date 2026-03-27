@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
+from functools import lru_cache
+import json
+from pathlib import Path
 from typing import Dict, List, Literal, Optional, Sequence, Tuple
 
 from app.layers.processing_layer.rxnav import lookup_rxnorm
@@ -74,25 +77,63 @@ def _label_to_type(label: str) -> Optional[EntityType]:
     return None
 
 
+def _fallback_patterns_path() -> Path:
+    configured = (os.getenv("CLINICAL_FALLBACK_PATTERNS") or "").strip()
+    if configured:
+        return Path(configured)
+    return Path.cwd() / "app" / "config" / "clinical_fallback_patterns.json"
+
+
+@lru_cache(maxsize=1)
+def _load_fallback_patterns() -> List[dict]:
+    path = _fallback_patterns_path()
+    try:
+        raw = path.read_text(encoding="utf-8")
+        data = json.loads(raw)
+    except Exception:
+        return []
+    if not isinstance(data, list):
+        return []
+    out: List[dict] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        etype = str(item.get("type") or "").strip().lower()
+        pattern = str(item.get("pattern") or "").strip()
+        normalized_value = str(item.get("normalized_value") or item.get("normalized") or "").strip().lower()
+        if etype not in {"diagnosis", "procedure", "medication"}:
+            continue
+        if not pattern or not normalized_value:
+            continue
+        confidence = item.get("confidence", 0.65)
+        try:
+            confidence = float(confidence)
+        except Exception:
+            confidence = 0.65
+        out.append(
+            {
+                "type": etype,
+                "pattern": pattern,
+                "normalized_value": normalized_value,
+                "confidence": max(0.0, min(1.0, confidence)),
+            }
+        )
+    return out
+
+
 def _keyword_fallback(cleaned: str) -> List[NormalizedEntity]:
     text = cleaned or ""
     low = text.lower()
-    patterns: List[Tuple[EntityType, str, str]] = [
-        ("diagnosis", r"\bdiabetes\b", "type 2 diabetes mellitus"),
-        ("diagnosis", r"\b(high\s+)?blood\s+sugar(\s+levels)?\b", "hyperglycemia"),
-        ("diagnosis", r"\bhyperglyc(e|a)mi(a|e)\b", "hyperglycemia"),
-        ("diagnosis", r"\bhtn\b", "hypertension"),
-        ("diagnosis", r"\bhypertension\b", "hypertension"),
-        ("diagnosis", r"\bchest\s+pain\b", "chest pain"),
-        ("diagnosis", r"\b(difficulty\s+breathing|shortness\s+of\s+breath|dyspnea)\b", "shortness of breath"),
-        ("diagnosis", r"\basthma\b", "asthma"),
-        ("diagnosis", r"\bkidney\s+failure(\s+stage\s*(\d+))?\b", "kidney failure"),
-        ("diagnosis", r"\b(heart\s+attack|myocardial\s+infarction)\b", "myocardial infarction"),
-        ("diagnosis", r"\b(urinary\s+tract\s+infection|urinary\s+infection|uti)\b", "urinary tract infection"),
-    ]
+    patterns = _load_fallback_patterns()
+    if not patterns:
+        return []
 
     hits: List[NormalizedEntity] = []
-    for etype, pat, norm in patterns:
+    for item in patterns:
+        etype = item["type"]
+        pat = item["pattern"]
+        norm = item["normalized_value"]
+        confidence = item["confidence"]
         m = re.search(pat, low, flags=re.IGNORECASE)
         if not m:
             continue
@@ -102,24 +143,15 @@ def _keyword_fallback(cleaned: str) -> List[NormalizedEntity]:
         if not value:
             continue
 
-        normalized_value = norm
-        if pat.startswith(r"\bkidney\s+failure"):
-            stage = ""
-            try:
-                stage = (m.group(2) or "").strip()
-            except Exception:
-                stage = ""
-            if stage:
-                normalized_value = f"chronic kidney disease stage {stage}"
         hits.append(
             NormalizedEntity(
                 type=etype,
                 value=value,
-                normalized_value=normalized_value,
+                normalized_value=norm,
                 ontology_id="",
                 start=start,
                 end=end,
-                confidence=0.65,
+                confidence=confidence,
             )
         )
 
