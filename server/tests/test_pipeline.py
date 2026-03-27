@@ -279,6 +279,9 @@ def build_test_dataset() -> List[TestCase]:
 
 def _bootstrap_test_db(db_path: Path) -> None:
     os.environ["DATABASE_URL"] = f"sqlite:///{db_path.as_posix()}"
+    os.environ["GEMINI_API_KEY"] = ""
+    os.environ["GEMINI_MODEL"] = ""
+    os.environ["GEMINI_VISION_MODEL"] = ""
 
     from app.db.base import Base
     from app.db.session import ensure_db_initialized, engine
