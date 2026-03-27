@@ -1,6 +1,132 @@
 {
-  "min_clinical_confidence": 0.4,
-  "flag_unknown_if_uncertain_code": true,
-  "incompatible_code_pairs": [],
-  "required_supporting_diagnosis": []
+  "version": "2.0",
+  "last_updated": "2026-01-01",
+  "thresholds": {
+    "min_clinical_confidence": 0.4,
+    "min_icd_similarity": 0.65,
+    "high_confidence_threshold": 0.85
+  },
+  "flags": {
+    "flag_unknown_if_uncertain_code": true,
+    "flag_ambiguous_terms": true,
+    "enable_multi_condition_handling": true
+  },
+  "ambiguous_terms": [
+    "possible",
+    "suspected",
+    "likely",
+    "probable",
+    "rule out",
+    "questionable",
+    "uncertain",
+    "may have",
+    "suggestive of"
+  ],
+  "scoring": {
+    "base_score": 1.0,
+    "penalty_per_warning": 0.05,
+    "penalty_per_error": 0.15,
+    "critical_penalty": 0.4,
+    "min_acceptable_score": 0.6
+  },
+  "rules": {
+    "incompatible_code_pairs": [
+      {
+        "codes": ["E10", "E11"],
+        "severity": "critical",
+        "message": "Type 1 and Type 2 diabetes cannot coexist"
+      },
+      {
+        "codes": ["I10", "I95"],
+        "severity": "warning",
+        "message": "Hypertension and hypotension conflict"
+      },
+      {
+        "codes": ["J45", "J44"],
+        "severity": "warning",
+        "message": "Asthma and COPD combination requires careful validation"
+      }
+    ],
+    "mutually_exclusive_groups": [
+      {
+        "group": ["E10", "E11", "E13"],
+        "severity": "critical",
+        "message": "Only one diabetes type should be assigned"
+      }
+    ],
+    "required_supporting_diagnosis": [
+      {
+        "code": "Z79",
+        "requires_any_of": ["E10", "E11"],
+        "severity": "critical",
+        "message": "Long-term medication requires diabetes diagnosis"
+      },
+      {
+        "code": "Z99",
+        "requires_any_of": ["N18"],
+        "severity": "critical",
+        "message": "Dependence on dialysis requires CKD diagnosis"
+      }
+    ],
+    "procedure_diagnosis_links": [
+      {
+        "procedure": "dialysis",
+        "requires": ["N18"],
+        "severity": "critical",
+        "message": "Dialysis requires chronic kidney disease"
+      },
+      {
+        "procedure": "insulin therapy",
+        "requires": ["E10", "E11"],
+        "severity": "warning",
+        "message": "Insulin therapy should be linked with diabetes"
+      },
+      {
+        "procedure": "angioplasty",
+        "requires": ["I20", "I25"],
+        "severity": "critical",
+        "message": "Angioplasty requires cardiac condition"
+      }
+    ],
+    "clinical_consistency_rules": [
+      {
+        "diagnosis": "diabetes",
+        "expected_codes": ["E10", "E11"],
+        "severity": "warning",
+        "message": "Diagnosis and ICD code mismatch"
+      },
+      {
+        "diagnosis": "hypertension",
+        "expected_codes": ["I10"],
+        "severity": "warning",
+        "message": "Hypertension should map to I10"
+      }
+    ],
+    "chronic_condition_requirements": [
+      {
+        "code_prefix": "E",
+        "requires_followup": true,
+        "severity": "info",
+        "message": "Chronic endocrine conditions require monitoring"
+      }
+    ],
+    "age_gender_rules": [
+      {
+        "code": "O80",
+        "allowed_gender": "female",
+        "severity": "critical",
+        "message": "Pregnancy-related codes only valid for females"
+      }
+    ],
+    "duplicate_code_detection": {
+      "enabled": true,
+      "severity": "warning",
+      "message": "Duplicate ICD codes detected"
+    },
+    "unknown_code_handling": {
+      "enabled": true,
+      "severity": "warning",
+      "message": "Code could not be confidently mapped"
+    }
+  }
 }
