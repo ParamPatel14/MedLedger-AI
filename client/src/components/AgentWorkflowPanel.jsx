@@ -23,6 +23,14 @@ function severityColor(severity) {
   return 'bg-slate-50 text-slate-700 border-slate-200'
 }
 
+function svmStatusColor(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'pass') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  if (s === 'review') return 'bg-amber-50 text-amber-800 border-amber-200'
+  if (s === 'escalated') return 'bg-rose-50 text-rose-700 border-rose-200'
+  return 'bg-slate-50 text-slate-700 border-slate-200'
+}
+
 function renderTags(items, className) {
   const list = Array.isArray(items) ? items : []
   if (!list.length) {
@@ -56,6 +64,15 @@ export default function AgentWorkflowPanel() {
   const clinical = result?.clinical || null
   const coding = result?.coding || null
   const payer = result?.payer || null
+  const svm = result?.svm || null
+
+  const svmStages = useMemo(() => {
+    if (!svm || typeof svm !== 'object') return []
+    const order = ['svm_after_clinical', 'svm_after_coding', 'svm_after_rules']
+    return order
+      .map((key) => ({ key, data: svm?.[key] }))
+      .filter((x) => x.data && typeof x.data === 'object')
+  }, [svm])
 
   const icdCodes = useMemo(() => {
     const list = coding?.icd_codes
@@ -70,7 +87,7 @@ export default function AgentWorkflowPanel() {
             Agentic Coding Workflow
           </div>
           <p className="text-xs text-slate-500">
-            Clinical → Coding → Rule, with per-agent outputs and validation.
+            Clinical → SVM → Coding → SVM → Rule → SVM, with per-agent outputs and validation.
           </p>
         </div>
         {result?.record_id && (
@@ -147,11 +164,18 @@ export default function AgentWorkflowPanel() {
           <div className="mt-3 flex flex-wrap items-center gap-2">
             {[
               { key: 'clinical', label: 'Clinical' },
+              { key: 'svm_after_clinical', label: 'SVM' },
               { key: 'coding', label: 'Coding' },
+              { key: 'svm_after_coding', label: 'SVM' },
               { key: 'rule', label: 'Rule' },
-            ].map((s, idx) => {
+              { key: 'svm_after_rules', label: 'SVM' },
+            ].map((s, idx, arr) => {
               const step = flow.find((x) => x?.agent === s.key)
               const stepStatus = step?.status || (result ? 'skipped' : 'idle')
+              const svmStatus =
+                s.key.startsWith('svm_') && svm && typeof svm === 'object'
+                  ? svm?.[s.key]?.status
+                  : null
               return (
                 <div key={s.key} className="flex items-center gap-2">
                   <div className="flex flex-col">
@@ -163,8 +187,17 @@ export default function AgentWorkflowPanel() {
                     >
                       {String(stepStatus)}
                     </span>
+                    {svmStatus ? (
+                      <span
+                        className={`mt-1 inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] ${svmStatusColor(
+                          svmStatus,
+                        )}`}
+                      >
+                        {String(svmStatus)}
+                      </span>
+                    ) : null}
                   </div>
-                  {idx < 2 && (
+                  {idx < arr.length - 1 && (
                     <span className="text-slate-300" aria-hidden="true">
                       →
                     </span>
@@ -213,6 +246,136 @@ export default function AgentWorkflowPanel() {
               </div>
             ) : (
               <div className="mt-3 text-xs text-slate-400">No issues</div>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Semantic Verification (SVM)
+              </div>
+              <span
+                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${svmStatusColor(
+                  result?.status,
+                )}`}
+              >
+                {result?.status ? String(result.status) : '—'}
+              </span>
+            </div>
+            {svmStages.length ? (
+              <div className="mt-3 space-y-2">
+                {svmStages.map((stage) => {
+                  const stageStatus = stage?.data?.status
+                  const stageConfidence = stage?.data?.confidence
+                  const issues = Array.isArray(stage?.data?.issues)
+                    ? stage.data.issues
+                    : []
+                  const claims = Array.isArray(stage?.data?.claims)
+                    ? stage.data.claims
+                    : []
+                  const scores =
+                    stage?.data?.scores && typeof stage.data.scores === 'object'
+                      ? stage.data.scores
+                      : {}
+                  return (
+                    <details
+                      key={stage.key}
+                      className="rounded-lg border border-slate-200 bg-slate-50 p-3"
+                    >
+                      <summary className="cursor-pointer select-none">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="text-xs font-semibold text-slate-800">
+                            {String(stage.key)}
+                          </span>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${svmStatusColor(
+                                stageStatus,
+                              )}`}
+                            >
+                              {stageStatus ? String(stageStatus) : '—'}
+                            </span>
+                            <span className="text-[11px] text-slate-500">
+                              conf {formatScore(stageConfidence)}
+                            </span>
+                          </div>
+                        </div>
+                      </summary>
+                      <div className="mt-3 grid gap-3 md:grid-cols-2">
+                        <div>
+                          <div className="text-[11px] font-semibold text-slate-600">
+                            Scores
+                          </div>
+                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                              source {formatScore(scores?.source_alignment)}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                              consistency {formatScore(scores?.consistency)}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
+                              reason {formatScore(scores?.reasonability)}
+                            </span>
+                          </div>
+                          <div className="mt-3 text-[11px] font-semibold text-slate-600">
+                            Claims ({claims.length})
+                          </div>
+                          <div className="mt-2">
+                            {renderTags(
+                              claims.slice(0, 10).map((c) => {
+                                const t = String(c?.type || '').trim()
+                                const v = String(c?.value || '').trim()
+                                if (!t && !v) return 'claim'
+                                if (!t) return v
+                                if (!v) return t
+                                return `${t}: ${v}`
+                              }),
+                              'bg-white text-slate-700 border-slate-200',
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-[11px] font-semibold text-slate-600">
+                            Issues ({issues.length})
+                          </div>
+                          {issues.length ? (
+                            <div className="mt-2 space-y-2">
+                              {issues.slice(0, 6).map((issue, i) => (
+                                <div
+                                  key={`${issue?.type || 'issue'}-${i}`}
+                                  className={`rounded-lg border px-3 py-2 text-xs ${severityColor(
+                                    issue?.severity,
+                                  )}`}
+                                >
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <span className="font-semibold">
+                                      {String(issue?.type || 'issue')}
+                                    </span>
+                                    <span className="text-[11px]">
+                                      {String(issue?.severity || 'warning')}
+                                    </span>
+                                  </div>
+                                  <div className="mt-1">
+                                    {String(issue?.message || '')}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="mt-2 text-xs text-slate-400">
+                              No issues
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </details>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-slate-400">
+                No SVM results
+              </div>
             )}
           </div>
         </div>
@@ -389,4 +552,3 @@ export default function AgentWorkflowPanel() {
     </div>
   )
 }
-
