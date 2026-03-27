@@ -4,7 +4,7 @@ import re
 from typing import Any, Iterable, List, Sequence, Tuple
 
 
-_TOKEN_RE = re.compile(r"^([a-zA-Z0-9_\\-]+)(\\[(\\*|\\d+)\\])?$")
+_TOKEN_RE = re.compile(r"^([a-zA-Z0-9_-]+)(\[(\*|\d+)\])?$")
 
 
 def _iter_items(value: Any) -> Iterable[Tuple[str, Any]]:
@@ -99,4 +99,3 @@ def flatten_primitives(obj: Any, *, max_depth: int) -> List[dict]:
 
     walk(obj, [], 0)
     return out
-

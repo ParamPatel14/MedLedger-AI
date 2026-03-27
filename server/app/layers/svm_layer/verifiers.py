@@ -55,6 +55,7 @@ class SourceAlignmentVerifier:
         type_cfg = cfg.get("claim_types") or {}
         if not isinstance(type_cfg, dict):
             type_cfg = {}
+        only_configured = bool(cfg.get("only_configured_types", False))
 
         per_scores: List[float] = []
         issues: List[dict] = []
@@ -62,9 +63,13 @@ class SourceAlignmentVerifier:
 
         for c in claims:
             t = str(c.type or "").strip()
+            if only_configured and t not in type_cfg:
+                continue
             tc = type_cfg.get(t) or {}
             if not isinstance(tc, dict):
                 tc = {}
+            if tc.get("enabled") is False:
+                continue
             method = str(tc.get("method") or cfg.get("default_method") or "semantic_cosine").strip()
             try:
                 min_sim = float(tc.get("min_similarity") if tc.get("min_similarity") is not None else cfg.get("min_similarity"))
@@ -317,4 +322,3 @@ class ReasonabilityVerifier:
                 penalty += 0.0
         score = _clamp01(1.0 - penalty)
         return VerificationResult(score=score, issues=issues, explanations=explanations)
-

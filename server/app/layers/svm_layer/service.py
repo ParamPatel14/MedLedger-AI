@@ -114,8 +114,9 @@ class SvmMiddleware:
 
         cb = cfg.get("circuit_breaker") or {}
         enabled = bool((cb.get("enabled") if isinstance(cb, dict) else True))
+        stop = bool((cb.get("stop_on_escalated") if isinstance(cb, dict) else True))
         msg = str(decision_cfg.get("escalated_message") or "Insufficient confidence. Escalating for review.")
-        return confidence, SvmDecision(status="escalated", trigger_circuit_breaker=enabled, message=msg)
+        return confidence, SvmDecision(status="escalated", trigger_circuit_breaker=bool(enabled and stop), message=msg)
 
     def validate(
         self,
@@ -211,4 +212,3 @@ class SvmMiddleware:
                 if isinstance(v, dict):
                     statuses.append(str(v.get("status") or ""))
         return _worst_status(statuses) if statuses else "pass"
-

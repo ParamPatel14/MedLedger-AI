@@ -5,23 +5,20 @@
       "clinical_understanding": {
         "extractors": [
           { "type": "diagnosis", "path": "diagnosis[*]", "transforms": ["strip", "lower"] },
-          { "type": "procedure", "path": "procedures[*]", "transforms": ["strip", "lower"] },
-          { "type": "clinical_confidence", "path": "confidence" }
+          { "type": "procedure", "path": "procedures[*]", "transforms": ["strip", "lower"] }
         ]
       },
       "coding": {
         "extractors": [
           { "type": "icd_code", "path": "icd_codes[*].code", "transforms": ["strip", "upper"] },
           { "type": "icd_score", "path": "icd_codes[*].score" },
-          { "type": "diagnosis", "path": "icd_codes[*].source_text", "transforms": ["strip", "lower"] },
-          { "type": "coding_confidence", "path": "confidence" }
+          { "type": "diagnosis", "path": "icd_codes[*].source_text", "transforms": ["strip", "lower"] }
         ]
       },
       "payer_rules": {
         "extractors": [
           { "type": "payer_is_valid", "path": "is_valid" },
-          { "type": "payer_issue_type", "path": "issues[*].type", "transforms": ["strip", "lower"] },
-          { "type": "payer_confidence", "path": "confidence" }
+          { "type": "payer_issue_type", "path": "issues[*].type", "transforms": ["strip", "lower"] }
         ]
       }
     },
@@ -30,6 +27,7 @@
   "verification": {
     "source_alignment": {
       "enabled": true,
+      "only_configured_types": true,
       "default_method": "semantic_cosine",
       "min_similarity": 0.25,
       "severity": "warning",
@@ -57,10 +55,8 @@
       "enabled": true,
       "severity_weights": { "info": 0.02, "warning": 0.06, "critical": 0.2 },
       "rules": [
-        { "id": "clinical_confidence_range", "type": "numeric_range", "severity": "warning", "path": "confidence", "min": 0.0, "max": 1.0, "message": "Clinical confidence out of expected range" },
         { "id": "coding_score_range", "type": "numeric_range", "severity": "warning", "path": "icd_codes[*].score", "min": 0.0, "max": 1.0, "message": "ICD similarity score out of expected range" },
-        { "id": "coding_confidence_range", "type": "numeric_range", "severity": "warning", "path": "confidence", "min": 0.0, "max": 1.0, "message": "Coding confidence out of expected range" },
-        { "id": "payer_confidence_range", "type": "numeric_range", "severity": "warning", "path": "confidence", "min": 0.0, "max": 1.0, "message": "Payer confidence out of expected range" }
+        { "id": "confidence_range", "type": "numeric_range", "severity": "warning", "path": "confidence", "min": 0.0, "max": 1.0, "message": "Confidence out of expected range" }
       ]
     }
   },
@@ -75,4 +71,3 @@
   "cascade": { "warning_penalty": 0.05, "max_penalty": 0.2 },
   "circuit_breaker": { "enabled": true, "stop_on_escalated": true }
 }
-
