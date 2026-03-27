@@ -276,8 +276,70 @@ class ClinicalNlpService:
 
         return cleaned, entities
 
-    def summarize(self, entities: List[NormalizedEntity]) -> Tuple[List[str], List[str], List[str]]:
-        diagnosis = _unique_preserve_order([e.normalized_value for e in entities if e.type == "diagnosis"])
-        procedures = _unique_preserve_order([e.normalized_value for e in entities if e.type == "procedure"])
-        medications = _unique_preserve_order([e.normalized_value for e in entities if e.type == "medication"])
+    def summarize(self, text: str, entities: List[NormalizedEntity]) -> Tuple[List[str], List[str], List[str]]:
+        cleaned = (text or "").strip()
+        low = cleaned.lower()
+
+        def _is_negated(e: NormalizedEntity) -> bool:
+            try:
+                start = int(getattr(e, "start", 0) or 0)
+            except Exception:
+                start = 0
+            start = max(0, min(start, len(low)))
+            window = low[max(0, start - 80) : start]
+            window = re.sub(r"[^a-z0-9\s]+", " ", window).strip()
+            if not window:
+                return False
+            return (
+                re.search(
+                    r"(?:\bno\b|\bwithout\b|\bdenies\b|\bdeny\b|\bnegative\s+for\b)(?:\s+\w+){0,3}\s*$",
+                    window,
+                    flags=re.IGNORECASE,
+                )
+                is not None
+            )
+
+        abbr_map = {
+            "uti": "urinary tract infection",
+            "htn": "hypertension",
+            "ckd": "chronic kidney disease",
+            "cad": "coronary artery disease",
+            "copd": "chronic obstructive pulmonary disease",
+            "dm": "diabetes mellitus",
+            "t2dm": "type 2 diabetes mellitus",
+            "t1dm": "type 1 diabetes mellitus",
+            "type 2 diabetes": "type 2 diabetes mellitus",
+            "type ii diabetes": "type 2 diabetes mellitus",
+            "type 1 diabetes": "type 1 diabetes mellitus",
+            "type i diabetes": "type 1 diabetes mellitus",
+        }
+
+        filtered = [e for e in (entities or []) if not _is_negated(e)]
+
+        diagnosis = [abbr_map.get(e.normalized_value, e.normalized_value) for e in filtered if e.type == "diagnosis"]
+        procedures = [abbr_map.get(e.normalized_value, e.normalized_value) for e in filtered if e.type == "procedure"]
+        medications = [abbr_map.get(e.normalized_value, e.normalized_value) for e in filtered if e.type == "medication"]
+
+        # Split spurious merged diagnoses (e.g., "type 2 diabetes, urinary tract infection") but keep stage qualifiers
+        expanded: List[str] = []
+        for d in diagnosis:
+            if ("," in d or " and " in d) and ("stage" not in d):
+                parts = re.split(r",|\\band\\b", d)
+                for p in parts:
+                    p = p.strip()
+                    if not p:
+                        continue
+                    expanded.append(abbr_map.get(p, p))
+            else:
+                expanded.append(d)
+
+        diagnosis = _unique_preserve_order(expanded)
+        procedures = _unique_preserve_order(procedures)
+        medications = _unique_preserve_order(medications)
+
+        if any(d.startswith("type 1 diabetes") or d.startswith("type 2 diabetes") for d in diagnosis):
+            diagnosis = [d for d in diagnosis if d != "diabetes mellitus"]
+        if any("chronic kidney disease stage" in d for d in diagnosis):
+            diagnosis = [d for d in diagnosis if d != "chronic kidney disease"]
+
         return diagnosis, procedures, medications

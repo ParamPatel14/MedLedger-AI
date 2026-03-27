@@ -79,7 +79,7 @@ class ClinicalUnderstandingAgent:
             raise ValueError("Missing input text")
 
         cleaned, entities = self._nlp.extract(text)
-        diagnosis, procedures, _medications = self._nlp.summarize(entities)
+        diagnosis, procedures, _medications = self._nlp.summarize(cleaned, entities)
         entity_conf = [float(getattr(e, "confidence", 0.0) or 0.0) for e in entities]
         avg_entity_conf = sum(entity_conf) / len(entity_conf) if entity_conf else 0.0
 
@@ -143,23 +143,41 @@ class CodingAgent:
         uncertain_diagnoses: List[str] = []
         for d in diagnoses:
             matches = self._coder.match_diagnosis(d, top_k=max(1, int(top_k)))
-            best = max([float(getattr(m, "confidence", 0.0) or 0.0) for m in matches], default=0.0)
+            matches_sorted = sorted(matches, key=lambda m: float(getattr(m, "confidence", 0.0) or 0.0), reverse=True)
+            best = float(getattr(matches_sorted[0], "confidence", 0.0) or 0.0) if matches_sorted else 0.0
             if best < threshold:
                 uncertain_diagnoses.append(d)
-            for m in matches:
-                score = float(m.confidence)
-                icd_codes.append(
+            if not matches_sorted:
+                continue
+
+            chosen = matches_sorted[0]
+            chosen_score = float(getattr(chosen, "confidence", 0.0) or 0.0)
+            alternatives: List[dict] = []
+            for m in matches_sorted[1:]:
+                score = float(getattr(m, "confidence", 0.0) or 0.0)
+                alternatives.append(
                     {
-                        "system": "ICD10",
                         "code": m.code,
                         "description": m.description,
                         "score": score,
-                        "source_text": m.source_text,
                         "method": m.method,
                         "is_uncertain": bool(score < threshold),
                     }
                 )
-                confidences.append(score)
+
+            icd_codes.append(
+                {
+                    "system": "ICD10",
+                    "code": chosen.code,
+                    "description": chosen.description,
+                    "score": chosen_score,
+                    "source_text": chosen.source_text,
+                    "method": chosen.method,
+                    "is_uncertain": bool(chosen_score < threshold),
+                    "alternatives": alternatives,
+                }
+            )
+            confidences.append(chosen_score)
 
         base = (sum(confidences) / len(confidences)) if confidences else 0.1
         penalty = (0.2 * len(uncertain_diagnoses) / max(1, len(diagnoses))) if uncertain_diagnoses else 0.0

@@ -83,7 +83,7 @@ def _nlp_version() -> str:
 
 def _run_pipeline(db: Session, *, source: str, filename: str, content_type: str, size_bytes: int, text: str) -> RecordOut:
     cleaned, entities = _nlp.extract(text)
-    diagnosis, procedures, medications = _nlp.summarize(entities)
+    diagnosis, procedures, medications = _nlp.summarize(cleaned, entities)
 
     if not diagnosis and not procedures and not medications:
         fallback = extract_with_gemini(cleaned)

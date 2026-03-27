@@ -97,6 +97,9 @@ def _issue_types(trace: Dict[str, Any]) -> List[str]:
     for it in issues:
         if not isinstance(it, dict):
             continue
+        sev = str(it.get("severity") or "").lower().strip()
+        if sev and sev not in {"warning", "error", "critical"}:
+            continue
         t = str(it.get("type") or "").strip()
         if t:
             out.append(t)
