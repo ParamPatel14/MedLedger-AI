@@ -29,7 +29,6 @@ def _clamp01(v: float) -> float:
 class ClinicalUnderstandingOut:
     diagnosis: List[str]
     procedures: List[str]
-    medications: List[str]
     confidence: float
     explanation: str
 
@@ -37,7 +36,6 @@ class ClinicalUnderstandingOut:
         return {
             "diagnosis": self.diagnosis,
             "procedures": self.procedures,
-            "medications": self.medications,
             "confidence": self.confidence,
             "explanation": self.explanation,
         }
@@ -79,18 +77,17 @@ class ClinicalUnderstandingAgent:
             raise ValueError("Missing input text")
 
         cleaned, entities = self._nlp.extract(text)
-        diagnosis, procedures, medications = self._nlp.summarize(entities)
+        diagnosis, procedures, _medications = self._nlp.summarize(entities)
         entity_conf = [float(getattr(e, "confidence", 0.0) or 0.0) for e in entities]
         avg_entity_conf = sum(entity_conf) / len(entity_conf) if entity_conf else 0.0
 
-        found = len(diagnosis) + len(procedures) + len(medications)
+        found = len(diagnosis) + len(procedures)
         confidence = _clamp01(0.35 + 0.65 * avg_entity_conf) if found > 0 else 0.15
-        explanation = f"Extracted {len(diagnosis)} diagnoses, {len(procedures)} procedures, {len(medications)} medications using {self._nlp.model_name or 'unknown'}."
+        explanation = f"Extracted {len(diagnosis)} diagnoses and {len(procedures)} procedures using {self._nlp.model_name or 'unknown'}."
 
         out = ClinicalUnderstandingOut(
             diagnosis=diagnosis,
             procedures=procedures,
-            medications=medications,
             confidence=confidence,
             explanation=explanation,
         )
@@ -211,11 +208,15 @@ class PayerRuleAgent:
         diagnoses = [str(d or "").strip().lower() for d in (clinical.diagnosis or [])]
 
         issues: List[dict] = []
-        if float(getattr(clinical, "confidence", 0.0) or 0.0) < 0.4:
+        try:
+            min_clinical_conf = float(rules.get("min_clinical_confidence", 0.4))
+        except Exception:
+            min_clinical_conf = 0.4
+        if float(getattr(clinical, "confidence", 0.0) or 0.0) < min_clinical_conf:
             issues.append({"type": "ambiguous_diagnosis", "message": "Clinical extraction confidence is low; diagnosis may be ambiguous."})
 
         uncertain = [c for c in (coding.icd_codes or []) if isinstance(c, dict) and bool(c.get("is_uncertain"))]
-        if uncertain:
+        if uncertain and bool(rules.get("flag_unknown_if_uncertain_code", True)):
             issues.append({"type": "unknown_condition", "message": "One or more ICD mappings are low-confidence; manual review recommended."})
 
         pairs = rules.get("incompatible_code_pairs", [])

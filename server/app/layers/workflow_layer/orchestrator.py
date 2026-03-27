@@ -180,7 +180,6 @@ class LangGraphOrchestrator:
         return ClinicalUnderstandingOut(
             diagnosis=list(d.get("diagnosis") or []),
             procedures=list(d.get("procedures") or []),
-            medications=list(d.get("medications") or []),
             confidence=float(d.get("confidence") or 0.0),
             explanation=str(d.get("explanation") or ""),
         )

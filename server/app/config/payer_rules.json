@@ -1,4 +1,6 @@
 {
+  "min_clinical_confidence": 0.4,
+  "flag_unknown_if_uncertain_code": true,
   "incompatible_code_pairs": [],
   "required_supporting_diagnosis": []
 }
