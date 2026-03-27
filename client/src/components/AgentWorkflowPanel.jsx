@@ -1,0 +1,392 @@
+import { useMemo, useState } from 'react'
+import { runAgentWorkflowTrace } from '../services/api'
+
+function formatScore(value) {
+  if (value === null || value === undefined) return '0.00'
+  const n = Number(value)
+  if (Number.isNaN(n)) return '0.00'
+  return n.toFixed(2)
+}
+
+function pillColor(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'ok') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  if (s === 'skipped') return 'bg-slate-50 text-slate-700 border-slate-200'
+  return 'bg-rose-50 text-rose-700 border-rose-200'
+}
+
+function severityColor(severity) {
+  const s = String(severity || '').toLowerCase()
+  if (s === 'critical') return 'bg-rose-50 text-rose-700 border-rose-200'
+  if (s === 'error') return 'bg-orange-50 text-orange-700 border-orange-200'
+  if (s === 'warning') return 'bg-amber-50 text-amber-800 border-amber-200'
+  return 'bg-slate-50 text-slate-700 border-slate-200'
+}
+
+function renderTags(items, className) {
+  const list = Array.isArray(items) ? items : []
+  if (!list.length) {
+    return <div className="text-xs text-slate-400">None</div>
+  }
+  return (
+    <div className="flex flex-wrap gap-2">
+      {list.map((item) => (
+        <span
+          key={String(item)}
+          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${className}`}
+        >
+          {String(item)}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+export default function AgentWorkflowPanel() {
+  const [text, setText] = useState('')
+  const [status, setStatus] = useState('idle')
+  const [error, setError] = useState(null)
+  const [result, setResult] = useState(null)
+
+  const flow = useMemo(() => {
+    const f = result?.flow
+    return Array.isArray(f) ? f : []
+  }, [result])
+
+  const clinical = result?.clinical || null
+  const coding = result?.coding || null
+  const payer = result?.payer || null
+
+  const icdCodes = useMemo(() => {
+    const list = coding?.icd_codes
+    return Array.isArray(list) ? list : []
+  }, [coding])
+
+  return (
+    <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="text-base font-semibold text-slate-800">
+            Agentic Coding Workflow
+          </div>
+          <p className="text-xs text-slate-500">
+            Clinical → Coding → Rule, with per-agent outputs and validation.
+          </p>
+        </div>
+        {result?.record_id && (
+          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+            Record {String(result.record_id).slice(0, 8)}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4 grid gap-3 md:grid-cols-2">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <label className="text-xs font-semibold text-slate-600">
+            Clinical text
+          </label>
+          <textarea
+            className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-200"
+            rows={6}
+            value={text}
+            placeholder="Paste clinical note text here…"
+            onChange={(e) => setText(e.target.value)}
+          />
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={`btn btnPrimary text-white ${status === 'loading' ? 'opacity-70 pointer-events-none' : ''}`}
+              onClick={async () => {
+                const payload = (text || '').trim()
+                if (!payload) return
+                setStatus('loading')
+                setError(null)
+                setResult(null)
+                try {
+                  const data = await runAgentWorkflowTrace(payload)
+                  setResult(data)
+                  setStatus('done')
+                } catch (e) {
+                  setError(e?.message || 'Request failed')
+                  setStatus('error')
+                }
+              }}
+            >
+              {status === 'loading' ? 'Running…' : 'Run Agent Workflow'}
+            </button>
+            <button
+              type="button"
+              className="btn btnGhost"
+              onClick={() => {
+                setText('')
+                setResult(null)
+                setError(null)
+                setStatus('idle')
+              }}
+            >
+              Reset
+            </button>
+          </div>
+          {error && (
+            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+              {String(error)}
+            </div>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-200 bg-white p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-slate-800">
+              Agent Flow Visualization
+            </div>
+            <span className="text-xs text-slate-500">
+              Overall confidence: {formatScore(result?.confidence)}
+            </span>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            {[
+              { key: 'clinical', label: 'Clinical' },
+              { key: 'coding', label: 'Coding' },
+              { key: 'rule', label: 'Rule' },
+            ].map((s, idx) => {
+              const step = flow.find((x) => x?.agent === s.key)
+              const stepStatus = step?.status || (result ? 'skipped' : 'idle')
+              return (
+                <div key={s.key} className="flex items-center gap-2">
+                  <div className="flex flex-col">
+                    <span className="text-xs font-semibold text-slate-700">
+                      {s.label}
+                    </span>
+                    <span
+                      className={`inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] ${pillColor(stepStatus)}`}
+                    >
+                      {String(stepStatus)}
+                    </span>
+                  </div>
+                  {idx < 2 && (
+                    <span className="text-slate-300" aria-hidden="true">
+                      →
+                    </span>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                Validation Status
+              </div>
+              <span
+                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                  payer?.is_valid
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-rose-50 text-rose-700 border-rose-200'
+                }`}
+              >
+                {payer ? (payer.is_valid ? 'Valid' : 'Invalid') : '—'}
+              </span>
+            </div>
+            <div className="mt-2 text-xs text-slate-600">
+              Rule confidence: {formatScore(payer?.confidence)}
+            </div>
+            {payer?.issues && payer.issues.length > 0 ? (
+              <div className="mt-3 space-y-2">
+                {payer.issues.slice(0, 8).map((issue, i) => (
+                  <div
+                    key={`${issue?.type || 'issue'}-${i}`}
+                    className={`rounded-lg border px-3 py-2 text-xs ${severityColor(issue?.severity)}`}
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-semibold">
+                        {String(issue?.type || 'issue')}
+                      </span>
+                      <span className="text-[11px]">
+                        {String(issue?.severity || 'warning')}
+                      </span>
+                    </div>
+                    <div className="mt-1">{String(issue?.message || '')}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-3 text-xs text-slate-400">No issues</div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {result && (
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-slate-800">
+                Clinical Agent Output
+              </div>
+              <span className="text-xs text-slate-500">
+                {formatScore(clinical?.confidence)}
+              </span>
+            </div>
+            <div className="mt-3">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Diagnosis extracted
+              </div>
+              {renderTags(
+                clinical?.diagnosis,
+                'bg-red-50 text-red-700 border-red-200',
+              )}
+            </div>
+            <div className="mt-4">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Procedures extracted
+              </div>
+              {renderTags(
+                clinical?.procedures,
+                'bg-sky-50 text-sky-700 border-sky-200',
+              )}
+            </div>
+            {clinical?.explanation && (
+              <div className="mt-4 text-xs text-slate-600">
+                {String(clinical.explanation)}
+              </div>
+            )}
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-slate-800">
+                Coding Agent Output
+              </div>
+              <span className="text-xs text-slate-500">
+                {formatScore(coding?.confidence)}
+              </span>
+            </div>
+            <div className="mt-2 text-xs text-slate-600">
+              {coding?.mapping_reason ? String(coding.mapping_reason) : '—'}
+            </div>
+            <div className="mt-3 overflow-auto rounded-lg border border-slate-200">
+              <table className="min-w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Code</th>
+                    <th className="px-3 py-2 font-semibold">Description</th>
+                    <th className="px-3 py-2 font-semibold">Score</th>
+                    <th className="px-3 py-2 font-semibold">Source</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {icdCodes.length ? (
+                    icdCodes.slice(0, 10).map((c, i) => (
+                      <tr
+                        key={`${c?.code || 'code'}-${i}`}
+                        className="border-t border-slate-100"
+                      >
+                        <td className="px-3 py-2 whitespace-nowrap font-semibold text-slate-800">
+                          {String(c?.code || '')}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {String(c?.description || '')}
+                        </td>
+                        <td className="px-3 py-2 text-slate-700">
+                          {formatScore(c?.score)}
+                          {c?.is_uncertain ? (
+                            <span className="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
+                              Uncertain
+                            </span>
+                          ) : null}
+                        </td>
+                        <td className="px-3 py-2 text-slate-600">
+                          {String(c?.source_text || '')}
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr className="border-t border-slate-100">
+                      <td
+                        className="px-3 py-3 text-slate-400"
+                        colSpan={4}
+                      >
+                        No codes
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm font-semibold text-slate-800">
+                Rule Agent Output
+              </div>
+              <span className="text-xs text-slate-500">
+                {formatScore(payer?.confidence)}
+              </span>
+            </div>
+            <div className="mt-3">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Validation status
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                    payer?.is_valid
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-rose-50 text-rose-700 border-rose-200'
+                  }`}
+                >
+                  {payer ? (payer.is_valid ? 'Valid' : 'Invalid') : '—'}
+                </span>
+                <span className="text-xs text-slate-600">
+                  Overall: {formatScore(result?.confidence)}
+                </span>
+              </div>
+            </div>
+            <div className="mt-4">
+              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
+                Issues
+              </div>
+              {payer?.issues && payer.issues.length > 0 ? (
+                <div className="space-y-2">
+                  {payer.issues.slice(0, 8).map((issue, i) => (
+                    <div
+                      key={`${issue?.type || 'issue'}-${i}`}
+                      className={`rounded-lg border px-3 py-2 text-xs ${severityColor(issue?.severity)}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold">
+                          {String(issue?.type || 'issue')}
+                        </span>
+                        <span className="text-[11px]">
+                          {String(issue?.severity || 'warning')}
+                        </span>
+                      </div>
+                      <div className="mt-1">{String(issue?.message || '')}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400">No issues</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {result && (
+        <details className="mt-4 group">
+          <summary className="text-xs font-medium text-slate-500 cursor-pointer hover:text-sky-600 transition-colors">
+            View Raw Trace JSON
+          </summary>
+          <pre className="mt-2 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
+            {JSON.stringify(result, null, 2)}
+          </pre>
+        </details>
+      )}
+    </div>
+  )
+}
+

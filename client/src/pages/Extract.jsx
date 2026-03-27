@@ -1,4 +1,5 @@
 import ClinicalExtractorPanel from '../components/ClinicalExtractorPanel'
+import AgentWorkflowPanel from '../components/AgentWorkflowPanel'
 import TermCatalogPanel from '../components/TermCatalogPanel'
 import '../App.css'
 
@@ -13,6 +14,7 @@ export default function Extract() {
           </p>
         </div>
         <ClinicalExtractorPanel />
+        <AgentWorkflowPanel />
         <TermCatalogPanel />
       </section>
     </div>

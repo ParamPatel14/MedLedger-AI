@@ -20,3 +20,36 @@ class ProcessOut(BaseModel):
     icd_codes: List[Dict[str, Any]]
     validation: ValidationOut
     confidence: float
+
+
+class AgentFlowStepOut(BaseModel):
+    agent: str
+    status: str
+
+
+class ClinicalAgentOut(BaseModel):
+    diagnosis: List[str]
+    procedures: List[str]
+    confidence: float
+    explanation: str
+
+
+class CodingAgentOut(BaseModel):
+    icd_codes: List[Dict[str, Any]]
+    mapping_reason: str
+    confidence: float
+
+
+class PayerAgentOut(BaseModel):
+    is_valid: bool
+    issues: List[Dict[str, Any]]
+    confidence: float
+
+
+class ProcessTraceOut(BaseModel):
+    record_id: str
+    flow: List[AgentFlowStepOut]
+    clinical: ClinicalAgentOut
+    coding: CodingAgentOut
+    payer: PayerAgentOut
+    confidence: float

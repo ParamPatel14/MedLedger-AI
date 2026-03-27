@@ -30,6 +30,16 @@ export async function runPipelineText(text) {
   return res.json()
 }
 
+export async function runAgentWorkflowTrace(text) {
+  const res = await fetch('/api/process/trace', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  if (!res.ok) throw new Error(`Workflow request failed (${res.status})`)
+  return res.json()
+}
+
 async function uploadFile(path, file) {
   const form = new FormData()
   form.append('file', file)

@@ -1,8 +1,20 @@
 [
   {
     "type": "diagnosis",
-    "pattern": "\\bdiabetes\\b",
+    "pattern": "\\b(type\\s*2\\s+diabetes|t2dm|type\\s*ii\\s+diabetes)\\b",
     "normalized_value": "type 2 diabetes mellitus",
+    "confidence": 0.7
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(type\\s*1\\s+diabetes|t1dm|type\\s*i\\s+diabetes)\\b",
+    "normalized_value": "type 1 diabetes mellitus",
+    "confidence": 0.7
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\bdiabetes\\b",
+    "normalized_value": "diabetes mellitus",
     "confidence": 0.65
   },
   {
@@ -70,5 +82,53 @@
     "pattern": "\\b(urinary\\s+tract\\s+infection|urinary\\s+infection|uti)\\b",
     "normalized_value": "urinary tract infection",
     "confidence": 0.65
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(copd|chronic\\s+obstructive\\s+pulmonary\\s+disease)\\b",
+    "normalized_value": "chronic obstructive pulmonary disease",
+    "confidence": 0.7
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(coronary\\s+artery\\s+disease|cad)\\b",
+    "normalized_value": "coronary artery disease",
+    "confidence": 0.7
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(ckd|chronic\\s+kidney\\s+disease)\\b",
+    "normalized_value": "chronic kidney disease",
+    "confidence": 0.7
+  },
+  {
+    "type": "procedure",
+    "pattern": "\\b(dialysis|hemodialysis|haemodialysis|peritoneal\\s+dialysis)\\b",
+    "normalized_value": "dialysis",
+    "confidence": 0.7
+  },
+  {
+    "type": "procedure",
+    "pattern": "\\b(insulin\\s+therapy|started\\s+insulin|on\\s+insulin)\\b",
+    "normalized_value": "insulin therapy",
+    "confidence": 0.7
+  },
+  {
+    "type": "procedure",
+    "pattern": "\\b(angioplasty|ptca|coronary\\s+angioplasty)\\b",
+    "normalized_value": "angioplasty",
+    "confidence": 0.7
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(long[-\\s]*term\\s+insulin\\s+use|long[-\\s]*term\\s+use\\s+of\\s+insulin|z79\\.?4)\\b",
+    "normalized_value": "long term (current) use of insulin",
+    "confidence": 0.7
+  },
+  {
+    "type": "diagnosis",
+    "pattern": "\\b(dependence\\s+on\\s+(renal\\s+)?dialysis|dialysis\\s+dependence|z99\\.?2)\\b",
+    "normalized_value": "dependence on renal dialysis",
+    "confidence": 0.7
   }
 ]

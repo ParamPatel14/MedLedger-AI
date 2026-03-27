@@ -227,6 +227,34 @@ class PayerRuleAgent:
         if float(getattr(clinical, "confidence", 0.0) or 0.0) < min_clinical_conf:
             issues.append({"type": "ambiguous_diagnosis", "severity": "warning", "message": "Clinical extraction confidence is low; diagnosis may be ambiguous."})
 
+        def _safe_score(item: dict) -> float:
+            try:
+                return float(item.get("score") or 0.0)
+            except Exception:
+                return 0.0
+
+        def _category(code: str) -> str:
+            c = (code or "").strip().upper().replace(".", "")
+            if len(c) >= 3 and c[0].isalpha() and c[1:3].isdigit():
+                return c[:3]
+            return c
+
+        best_by_source: Dict[str, dict] = {}
+        for item in icd_items:
+            code = str(item.get("code") or "").strip().upper()
+            if not code:
+                continue
+            source = str(item.get("source_text") or "").strip().lower()
+            key = source or _category(code)
+            prev = best_by_source.get(key)
+            if prev is None or _safe_score(item) > _safe_score(prev):
+                best_by_source[key] = item
+
+        primary_items = list(best_by_source.values())
+        primary_categories = [_category(str(it.get("code") or "")) for it in primary_items if str(it.get("code") or "").strip()]
+        primary_categories = [c for c in primary_categories if c]
+        primary_set = set(primary_categories)
+
         ambiguous_terms = [str(x).strip().lower() for x in (rules.get("ambiguous_terms") or []) if str(x).strip()]
         if ambiguous_terms and bool(flags.get("flag_ambiguous_terms", True)):
             rec = db.query(WorkflowRecord).filter(WorkflowRecord.id == record_id).first()
@@ -236,7 +264,7 @@ class PayerRuleAgent:
                     issues.append({"type": "ambiguous_terms", "severity": "warning", "message": f"Ambiguous language detected: '{term}'"})
                     break
 
-        uncertain = [c for c in icd_items if bool(c.get("is_uncertain")) or float(c.get("score") or 0.0) < min_icd_similarity]
+        uncertain = [c for c in primary_items if bool(c.get("is_uncertain")) or _safe_score(c) < min_icd_similarity]
         if uncertain and bool(flags.get("flag_unknown_if_uncertain_code", True)):
             issues.append({"type": "unknown_condition", "severity": "warning", "message": "One or more ICD mappings are low-confidence; manual review recommended."})
 
@@ -244,7 +272,6 @@ class PayerRuleAgent:
 
         pairs = ruleset.get("incompatible_code_pairs", [])
         if isinstance(pairs, list):
-            s = set(icd_codes)
             for pair in pairs:
                 if not isinstance(pair, dict):
                     continue
@@ -252,7 +279,7 @@ class PayerRuleAgent:
                 severity = str(pair.get("severity") or "warning").lower()
                 message = str(pair.get("message") or "").strip() or "Incompatible code pair"
                 if len(codes) >= 2:
-                    matched = [c for c in codes if any(ic.startswith(c) for ic in icd_codes)]
+                    matched = [c for c in codes if any(cat.startswith(c) for cat in primary_categories)]
                     if len(matched) >= 2:
                         issues.append({"type": "incompatible_codes", "severity": severity, "codes": matched, "message": message})
 
@@ -264,7 +291,7 @@ class PayerRuleAgent:
                 group = [str(x).strip().upper() for x in (g.get("group") or []) if str(x).strip()]
                 sev = str(g.get("severity") or "critical").lower()
                 msg = str(g.get("message") or "Mutually exclusive group violation")
-                matched = [x for x in group if any(ic.startswith(x) for ic in icd_codes)]
+                matched = [x for x in group if any(cat.startswith(x) for cat in primary_categories)]
                 if len(matched) > 1:
                     issues.append({"type": "mutually_exclusive", "severity": sev, "codes": matched, "message": msg})
 
@@ -279,7 +306,7 @@ class PayerRuleAgent:
                 msg = str(rule.get("message") or "")
                 if not code or not requires_any:
                     continue
-                if any(ic.startswith(code) for ic in icd_codes) and not any(any(ic.startswith(req) for ic in icd_codes) for req in requires_any):
+                if any(cat.startswith(code) for cat in primary_categories) and not any(any(cat.startswith(req) for cat in primary_categories) for req in requires_any):
                     issues.append({"type": "missing_supporting_diagnosis", "severity": sev, "codes": [code], "message": msg or f"{code} requires {requires_any}"})
 
         proc_links = ruleset.get("procedure_diagnosis_links", [])
@@ -293,7 +320,7 @@ class PayerRuleAgent:
                 msg = str(rule.get("message") or "")
                 if not proc or not req:
                     continue
-                if any(proc in p for p in procedures) and not any(any(ic.startswith(r) for ic in icd_codes) for r in req):
+                if any(proc in p for p in procedures) and not any(any(cat.startswith(r) for cat in primary_categories) for r in req):
                     issues.append({"type": "procedure_requires_diagnosis", "severity": sev, "procedure": proc, "message": msg or f"{proc} requires codes {req}"})
 
         consistency = ruleset.get("clinical_consistency_rules", [])
@@ -307,7 +334,7 @@ class PayerRuleAgent:
                 msg = str(rule.get("message") or "")
                 if not diag or not expected:
                     continue
-                if any(diag in d for d in diagnoses) and not any(any(ic.startswith(prefix) for ic in icd_codes) for prefix in expected):
+                if any(diag in d for d in diagnoses) and not any(any(cat.startswith(prefix) for cat in primary_categories) for prefix in expected):
                     issues.append({"type": "diagnosis_code_mismatch", "severity": sev, "diagnosis": diag, "message": msg or f"{diag} expects codes {expected}"})
 
         chronic = ruleset.get("chronic_condition_requirements", [])
@@ -318,14 +345,14 @@ class PayerRuleAgent:
                 prefix = str(rule.get("code_prefix") or "").strip().upper()
                 sev = str(rule.get("severity") or "info").lower()
                 msg = str(rule.get("message") or "")
-                if prefix and any(ic.startswith(prefix) for ic in icd_codes):
+                if prefix and any(cat.startswith(prefix) for cat in primary_categories):
                     issues.append({"type": "chronic_followup", "severity": sev, "code_prefix": prefix, "message": msg or f"Codes with prefix {prefix} may require follow-up"})
 
         dup_cfg = ruleset.get("duplicate_code_detection", {})
         if isinstance(dup_cfg, dict) and bool(dup_cfg.get("enabled", True)):
             seen = set()
             dups = set()
-            for code in icd_codes:
+            for code in primary_categories:
                 if code in seen:
                     dups.add(code)
                 seen.add(code)
@@ -334,7 +361,7 @@ class PayerRuleAgent:
 
         unk_cfg = ruleset.get("unknown_code_handling", {})
         if isinstance(unk_cfg, dict) and bool(unk_cfg.get("enabled", True)):
-            low = [c for c in icd_items if float(c.get("score") or 0.0) < min_icd_similarity]
+            low = [c for c in primary_items if _safe_score(c) < min_icd_similarity]
             if low:
                 issues.append({"type": "unknown_code", "severity": str(unk_cfg.get("severity", "warning")).lower(), "message": str(unk_cfg.get("message") or "Code could not be confidently mapped")})
 
@@ -345,7 +372,7 @@ class PayerRuleAgent:
                     continue
                 code = str(rule.get("code") or "").strip().upper()
                 msg = str(rule.get("message") or "")
-                if any(ic.startswith(code) for ic in icd_codes):
+                if any(cat.startswith(code) for cat in primary_categories):
                     issues.append({"type": "demographic_rule_skipped", "severity": "info", "message": msg or "Demographic check skipped: age/gender not provided"})
 
         # Gemini fallback when local rules yield no issues
