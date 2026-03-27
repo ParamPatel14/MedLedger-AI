@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "thresholds": {
+    "min_confidence_for_approve": 0.85,
+    "min_confidence_for_warn": 0.6
+  },
+  "confidence": {
+    "source": "workflow",
+    "svm_stages": ["svm_after_clinical", "svm_after_coding", "svm_after_rules"],
+    "svm_aggregation": "min"
+  },
+  "decision_rules": [
+    {
+      "id": "block_on_critical_policy",
+      "decision": "BLOCK",
+      "reason": "Critical policy violation",
+      "when": { "kind": "issue_severity_in", "values": ["critical"] }
+    },
+    {
+      "id": "escalate_on_low_confidence",
+      "decision": "ESCALATE",
+      "reason": "Low confidence",
+      "when": {
+        "kind": "confidence_lt",
+        "threshold_key": "min_confidence_for_warn"
+      }
+    },
+    {
+      "id": "warn_on_warnings",
+      "decision": "WARN",
+      "reason": "Warnings present",
+      "when": { "kind": "issue_severity_in", "values": ["warning", "error"] }
+    },
+    {
+      "id": "approve_default",
+      "decision": "APPROVE",
+      "reason": "Passed governance checks",
+      "when": { "kind": "always" }
+    }
+  ]
+}

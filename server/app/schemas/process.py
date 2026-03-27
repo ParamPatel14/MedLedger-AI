@@ -25,13 +25,27 @@ class SvmResultOut(BaseModel):
     decision: Dict[str, Any] = Field(default_factory=dict)
 
 
+class GovernanceOut(BaseModel):
+    decision: str
+    confidence: float
+    reason: str = ""
+    issues: List[Dict[str, Any]] = Field(default_factory=list)
+    audit_id: str = ""
+    refusal: Dict[str, Any] | None = None
+    escalation: Dict[str, Any] | None = None
+
+
 class ProcessOut(BaseModel):
     status: str
+    decision: str
+    issues: List[Dict[str, Any]] = Field(default_factory=list)
+    audit_id: str = ""
     diagnosis: List[str]
     icd_codes: List[Dict[str, Any]]
     validation: ValidationOut
     confidence: float
     svm: Dict[str, SvmResultOut] = Field(default_factory=dict)
+    governance: GovernanceOut | None = None
 
 
 class AgentFlowStepOut(BaseModel):
@@ -67,3 +81,4 @@ class ProcessTraceOut(BaseModel):
     confidence: float
     status: str
     svm: Dict[str, SvmResultOut] = Field(default_factory=dict)
+    governance: GovernanceOut | None = None

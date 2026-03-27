@@ -1,0 +1,60 @@
+{
+  "version": "1.0",
+  "policies": [
+    {
+      "id": "clinical_required_fields",
+      "type": "completeness",
+      "severity": "critical",
+      "message": "Missing required clinical fields",
+      "rule": {
+        "kind": "required_non_empty",
+        "paths": ["clinical.diagnosis", "clinical.procedures"]
+      }
+    },
+    {
+      "id": "diagnosis_supported_by_source",
+      "type": "clinical",
+      "severity": "critical",
+      "message": "Diagnosis not found in source",
+      "rule": {
+        "kind": "source_text_supports_items",
+        "items_path": "clinical.diagnosis[*]",
+        "match_method": "substring_ci",
+        "min_supported_ratio": 0.5,
+        "min_items": 1
+      }
+    },
+    {
+      "id": "no_duplicate_icd_codes",
+      "type": "billing",
+      "severity": "warning",
+      "message": "Duplicate ICD codes detected",
+      "rule": {
+        "kind": "no_duplicates",
+        "path": "coding.icd_codes[*].code",
+        "transforms": ["strip", "upper"]
+      }
+    },
+    {
+      "id": "procedure_requires_diagnosis",
+      "type": "billing",
+      "severity": "critical",
+      "message": "Procedure must match diagnosis",
+      "rule": {
+        "kind": "procedure_requires_any_diagnosis",
+        "procedures_path": "clinical.procedures[*]",
+        "diagnoses_path": "clinical.diagnosis[*]",
+        "links": [
+          {
+            "procedure_regex": "dialysis|hemodialysis|haemodialysis|peritoneal\\s+dialysis",
+            "requires_diagnosis_regex": ["ckd|chronic\\s+kidney\\s+disease|renal\\s+failure|esrd"]
+          },
+          {
+            "procedure_regex": "insulin\\s+therapy|started\\s+insulin|on\\s+insulin",
+            "requires_diagnosis_regex": ["diabetes"]
+          }
+        ]
+      }
+    }
+  ]
+}

@@ -15,4 +15,5 @@ sentence-transformers>=2.7.0
 langgraph>=0.2.0
 faiss-cpu==1.13.2
 PyYAML>=6.0
+pytest>=8.0.0
 https://s3-us-west-2.amazonaws.com/ai2-s2-scispacy/releases/v0.5.4/en_ner_bc5cdr_md-0.5.4.tar.gz

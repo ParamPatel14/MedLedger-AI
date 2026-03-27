@@ -288,6 +288,7 @@ def _bootstrap_test_db(db_path: Path) -> None:
 
     import app.models.workflow  # noqa: F401
     import app.models.svm  # noqa: F401
+    import app.models.governance  # noqa: F401
 
     ensure_db_initialized()
     if engine is None:

@@ -1,0 +1,85 @@
+{
+  "version": "1.0",
+  "refusal": {
+    "enabled": true,
+    "rules": [
+      {
+        "id": "refuse_missing_text",
+        "message": "Insufficient information. Cannot proceed.",
+        "when": { "kind": "raw_text_empty" }
+      },
+      {
+        "id": "refuse_missing_clinical_and_coding",
+        "message": "Insufficient information. Cannot proceed.",
+        "when": {
+          "kind": "all",
+          "rules": [
+            { "kind": "path_len_lte", "path": "clinical.diagnosis[*]", "value": 0 },
+            { "kind": "path_len_lte", "path": "coding.icd_codes[*].code", "value": 0 }
+          ]
+        }
+      }
+    ]
+  },
+  "escalation": {
+    "enabled": true,
+    "queue": "human_review",
+    "rules": [
+      {
+        "id": "escalate_on_conflicting_codes",
+        "reason": "Conflicting billing data",
+        "when": { "kind": "issue_type_in", "values": ["incompatible_codes", "mutually_exclusive"] }
+      },
+      {
+        "id": "escalate_on_unknown_condition",
+        "reason": "Unknown disease / low-confidence mapping",
+        "when": { "kind": "issue_type_in", "values": ["unknown_condition", "unknown_code"] }
+      }
+    ]
+  },
+  "edge_cases": {
+    "enabled": true,
+    "detectors": [
+      {
+        "id": "unknown_disease",
+        "type": "unknown_disease",
+        "severity": "warning",
+        "message": "Unknown disease or low-confidence mapping detected",
+        "when": {
+          "kind": "any",
+          "rules": [
+            { "kind": "issue_type_in", "values": ["unknown_condition", "unknown_code"] },
+            { "kind": "path_any_equals", "path": "coding.icd_codes[*].is_uncertain", "value": true }
+          ]
+        }
+      },
+      {
+        "id": "missing_clinical_data",
+        "type": "missing_clinical_data",
+        "severity": "critical",
+        "message": "Missing clinical diagnosis data",
+        "when": {
+          "kind": "all",
+          "rules": [
+            { "kind": "path_len_lte", "path": "clinical.diagnosis[*]", "value": 0 },
+            { "kind": "path_len_gte", "path": "clinical.procedures[*]", "value": 1 }
+          ]
+        }
+      },
+      {
+        "id": "multi_procedure_complexity",
+        "type": "multi_procedure_complexity",
+        "severity": "warning",
+        "message": "Multiple procedures detected; may require review",
+        "when": { "kind": "path_len_gte", "path": "clinical.procedures[*]", "value": 2 }
+      },
+      {
+        "id": "suspicious_patterns",
+        "type": "suspicious_patterns",
+        "severity": "warning",
+        "message": "Suspicious pattern detected",
+        "when": { "kind": "issue_type_in", "values": ["duplicate_claim", "fraud_suspected"] }
+      }
+    ]
+  }
+}

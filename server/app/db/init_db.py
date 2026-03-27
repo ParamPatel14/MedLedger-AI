@@ -7,6 +7,7 @@ from app.models.record import ClinicalRecord
 from app.models.term import ClinicalTerm
 from app.models.workflow import AgentOutput, WorkflowRecord, WorkflowState
 from app.models.svm import SvmAuditLog
+from app.models.governance import GovernanceAuditLog
 
 
 def init_db() -> None:

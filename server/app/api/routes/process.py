@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.layers.governance_layer.service import GovernanceLayer
 from app.layers.svm_layer.service import SvmMiddleware
 from app.layers.workflow_layer.agents import ClinicalUnderstandingAgent, CodingAgent, PayerRuleAgent
 from app.layers.workflow_layer.orchestrator import LangGraphOrchestrator
@@ -12,6 +13,7 @@ from app.schemas.process import (
     AgentFlowStepOut,
     ClinicalAgentOut,
     CodingAgentOut,
+    GovernanceOut,
     PayerAgentOut,
     ProcessIn,
     ProcessOut,
@@ -41,6 +43,7 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
         coding_agent=CodingAgent(),
         payer_rule_agent=PayerRuleAgent(),
         svm=SvmMiddleware(),
+        governance=GovernanceLayer(),
     )
     state = orchestrator.run(db, record_id=record.id, raw_text=text)
 
@@ -49,6 +52,7 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
     validation = state.get("validation") or {}
     errors = state.get("errors") or {}
     svm = state.get("svm") or {}
+    governance = state.get("governance") or {}
     status = SvmMiddleware.overall_status(svm)
 
     if errors:
@@ -56,6 +60,9 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
 
     out = ProcessOut(
         status=status,
+        decision=str((governance or {}).get("decision") or "APPROVE"),
+        issues=list((governance or {}).get("issues") or []),
+        audit_id=str((governance or {}).get("audit_id") or ""),
         diagnosis=list(clinical.get("diagnosis") or []),
         icd_codes=list(coding.get("icd_codes") or []),
         validation=ValidationOut(
@@ -63,8 +70,19 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
             issues=list(validation.get("issues") or []),
             confidence=float(validation.get("confidence") or 0.0),
         ),
-        confidence=float(state.get("confidence") or 0.0),
+        confidence=float((governance or {}).get("confidence") or 0.0),
         svm=svm,
+        governance=GovernanceOut(
+            decision=str((governance or {}).get("decision") or "APPROVE"),
+            confidence=float((governance or {}).get("confidence") or 0.0),
+            reason=str((governance or {}).get("reason") or ""),
+            issues=list((governance or {}).get("issues") or []),
+            audit_id=str((governance or {}).get("audit_id") or ""),
+            refusal=(governance or {}).get("refusal"),
+            escalation=(governance or {}).get("escalation"),
+        )
+        if isinstance(governance, dict) and governance
+        else None,
     )
     return out
 
@@ -87,6 +105,7 @@ def process_trace(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessT
         coding_agent=CodingAgent(),
         payer_rule_agent=PayerRuleAgent(),
         svm=SvmMiddleware(),
+        governance=GovernanceLayer(),
     )
     state = orchestrator.run(db, record_id=record.id, raw_text=text)
 
@@ -95,6 +114,7 @@ def process_trace(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessT
     validation = state.get("validation") or {}
     errors = state.get("errors") or {}
     svm = state.get("svm") or {}
+    governance = state.get("governance") or {}
     status = SvmMiddleware.overall_status(svm)
     if errors:
         raise HTTPException(status_code=422, detail={"record_id": record.id, "errors": errors})
@@ -106,6 +126,7 @@ def process_trace(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessT
         AgentFlowStepOut(agent="svm_after_coding", status="ok" if (svm.get("svm_after_coding") if isinstance(svm, dict) else None) else "skipped"),
         AgentFlowStepOut(agent="rule", status="ok" if validation else "skipped"),
         AgentFlowStepOut(agent="svm_after_rules", status="ok" if (svm.get("svm_after_rules") if isinstance(svm, dict) else None) else "skipped"),
+        AgentFlowStepOut(agent="governance", status="ok" if governance else "skipped"),
     ]
 
     return ProcessTraceOut(
@@ -130,4 +151,15 @@ def process_trace(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessT
         confidence=float(state.get("confidence") or 0.0),
         status=status,
         svm=svm,
+        governance=GovernanceOut(
+            decision=str((governance or {}).get("decision") or "APPROVE"),
+            confidence=float((governance or {}).get("confidence") or 0.0),
+            reason=str((governance or {}).get("reason") or ""),
+            issues=list((governance or {}).get("issues") or []),
+            audit_id=str((governance or {}).get("audit_id") or ""),
+            refusal=(governance or {}).get("refusal"),
+            escalation=(governance or {}).get("escalation"),
+        )
+        if isinstance(governance, dict) and governance
+        else None,
     )
