@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
+from app.layers.svm_layer.service import SvmMiddleware
 from app.layers.workflow_layer.agents import ClinicalUnderstandingAgent, CodingAgent, PayerRuleAgent
 from app.layers.workflow_layer.orchestrator import LangGraphOrchestrator
 from app.models.workflow import WorkflowRecord, WorkflowState
@@ -39,6 +40,7 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
         clinical_agent=ClinicalUnderstandingAgent(),
         coding_agent=CodingAgent(),
         payer_rule_agent=PayerRuleAgent(),
+        svm=SvmMiddleware(),
     )
     state = orchestrator.run(db, record_id=record.id, raw_text=text)
 
@@ -46,11 +48,14 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
     coding = state.get("coding") or {}
     validation = state.get("validation") or {}
     errors = state.get("errors") or {}
+    svm = state.get("svm") or {}
+    status = SvmMiddleware.overall_status(svm)
 
     if errors:
         raise HTTPException(status_code=422, detail={"record_id": record.id, "errors": errors})
 
     out = ProcessOut(
+        status=status,
         diagnosis=list(clinical.get("diagnosis") or []),
         icd_codes=list(coding.get("icd_codes") or []),
         validation=ValidationOut(
@@ -59,6 +64,7 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
             confidence=float(validation.get("confidence") or 0.0),
         ),
         confidence=float(state.get("confidence") or 0.0),
+        svm=svm,
     )
     return out
 
@@ -80,6 +86,7 @@ def process_trace(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessT
         clinical_agent=ClinicalUnderstandingAgent(),
         coding_agent=CodingAgent(),
         payer_rule_agent=PayerRuleAgent(),
+        svm=SvmMiddleware(),
     )
     state = orchestrator.run(db, record_id=record.id, raw_text=text)
 
@@ -87,13 +94,18 @@ def process_trace(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessT
     coding = state.get("coding") or {}
     validation = state.get("validation") or {}
     errors = state.get("errors") or {}
+    svm = state.get("svm") or {}
+    status = SvmMiddleware.overall_status(svm)
     if errors:
         raise HTTPException(status_code=422, detail={"record_id": record.id, "errors": errors})
 
     flow = [
         AgentFlowStepOut(agent="clinical", status="ok" if clinical else "skipped"),
+        AgentFlowStepOut(agent="svm_after_clinical", status="ok" if (svm.get("svm_after_clinical") if isinstance(svm, dict) else None) else "skipped"),
         AgentFlowStepOut(agent="coding", status="ok" if coding else "skipped"),
+        AgentFlowStepOut(agent="svm_after_coding", status="ok" if (svm.get("svm_after_coding") if isinstance(svm, dict) else None) else "skipped"),
         AgentFlowStepOut(agent="rule", status="ok" if validation else "skipped"),
+        AgentFlowStepOut(agent="svm_after_rules", status="ok" if (svm.get("svm_after_rules") if isinstance(svm, dict) else None) else "skipped"),
     ]
 
     return ProcessTraceOut(
@@ -116,4 +128,6 @@ def process_trace(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessT
             confidence=float(validation.get("confidence") or 0.0),
         ),
         confidence=float(state.get("confidence") or 0.0),
+        status=status,
+        svm=svm,
     )

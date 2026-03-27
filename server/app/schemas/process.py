@@ -15,11 +15,23 @@ class ValidationOut(BaseModel):
     confidence: float
 
 
+class SvmResultOut(BaseModel):
+    status: str
+    confidence: float
+    issues: List[Dict[str, Any]] = Field(default_factory=list)
+    claims: List[Dict[str, Any]] = Field(default_factory=list)
+    explanations: List[str] = Field(default_factory=list)
+    scores: Dict[str, float] = Field(default_factory=dict)
+    decision: Dict[str, Any] = Field(default_factory=dict)
+
+
 class ProcessOut(BaseModel):
+    status: str
     diagnosis: List[str]
     icd_codes: List[Dict[str, Any]]
     validation: ValidationOut
     confidence: float
+    svm: Dict[str, SvmResultOut] = Field(default_factory=dict)
 
 
 class AgentFlowStepOut(BaseModel):
@@ -53,3 +65,5 @@ class ProcessTraceOut(BaseModel):
     coding: CodingAgentOut
     payer: PayerAgentOut
     confidence: float
+    status: str
+    svm: Dict[str, SvmResultOut] = Field(default_factory=dict)

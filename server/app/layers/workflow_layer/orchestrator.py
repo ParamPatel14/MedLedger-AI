@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, TypedDict
 from sqlalchemy.orm import Session
 
 from app.layers.workflow_layer.agents import ClinicalUnderstandingAgent, CodingAgent, PayerRuleAgent
+from app.layers.svm_layer.service import SvmMiddleware
 from app.models.workflow import WorkflowState
 
 
@@ -14,6 +15,8 @@ class WorkflowGraphState(TypedDict, total=False):
     clinical: dict
     coding: dict
     validation: dict
+    svm: dict
+    svm_escalated: bool
     confidence: float
     errors: dict
     retries: dict
@@ -53,6 +56,7 @@ class LangGraphOrchestrator:
     clinical_agent: ClinicalUnderstandingAgent
     coding_agent: CodingAgent
     payer_rule_agent: PayerRuleAgent
+    svm: SvmMiddleware
 
     def run(self, db: Session, *, record_id: str, raw_text: str) -> WorkflowGraphState:
         from langgraph.graph import END, StateGraph
@@ -71,6 +75,36 @@ class LangGraphOrchestrator:
                 attempt = _inc_retry(state, "clinical")
                 status = "retrying" if attempt <= _retry_limit() else "failed"
                 _update_state_row(db, record_id, step="clinical", status=status, errors=errors)
+            return state
+
+        def svm_after_clinical_node(state: WorkflowGraphState) -> WorkflowGraphState:
+            stage = "svm_after_clinical"
+            state["current_step"] = stage
+            try:
+                svm_results = state.get("svm") or {}
+                out = self.svm.validate(
+                    db,
+                    record_id=record_id,
+                    stage=stage,
+                    agent_name=self.clinical_agent.name,
+                    raw_text=raw_text,
+                    agent_input={"raw_text": raw_text},
+                    agent_output=state.get("clinical") or {},
+                    prior_agent_outputs=[],
+                    prior_svm_results=[],
+                )
+                svm_results[stage] = out
+                state["svm"] = svm_results
+                state["svm_escalated"] = bool(out.get("status") == "escalated" and bool((out.get("decision") or {}).get("trigger_circuit_breaker")))
+                state["errors"] = {}
+                _update_state_row(db, record_id, step=stage, status="ok", errors={})
+            except Exception as e:
+                errors = state.get("errors") or {}
+                errors[stage] = str(e)
+                state["errors"] = errors
+                attempt = _inc_retry(state, stage)
+                status = "retrying" if attempt <= _retry_limit() else "failed"
+                _update_state_row(db, record_id, step=stage, status=status, errors=errors)
             return state
 
         def coding_node(state: WorkflowGraphState) -> WorkflowGraphState:
@@ -93,6 +127,38 @@ class LangGraphOrchestrator:
                 attempt = _inc_retry(state, "coding")
                 status = "retrying" if attempt <= _retry_limit() else "failed"
                 _update_state_row(db, record_id, step="coding", status=status, errors=errors)
+            return state
+
+        def svm_after_coding_node(state: WorkflowGraphState) -> WorkflowGraphState:
+            stage = "svm_after_coding"
+            state["current_step"] = stage
+            try:
+                svm_results = state.get("svm") or {}
+                prior_svm = [svm_results.get("svm_after_clinical")] if isinstance(svm_results, dict) else []
+                prior_agent_outputs = [{"agent_name": self.clinical_agent.name, "output": state.get("clinical") or {}}]
+                out = self.svm.validate(
+                    db,
+                    record_id=record_id,
+                    stage=stage,
+                    agent_name=self.coding_agent.name,
+                    raw_text=raw_text,
+                    agent_input={"clinical": state.get("clinical") or {}},
+                    agent_output=state.get("coding") or {},
+                    prior_agent_outputs=prior_agent_outputs,
+                    prior_svm_results=[x for x in prior_svm if isinstance(x, dict)],
+                )
+                svm_results[stage] = out
+                state["svm"] = svm_results
+                state["svm_escalated"] = bool(out.get("status") == "escalated" and bool((out.get("decision") or {}).get("trigger_circuit_breaker")))
+                state["errors"] = {}
+                _update_state_row(db, record_id, step=stage, status="ok", errors={})
+            except Exception as e:
+                errors = state.get("errors") or {}
+                errors[stage] = str(e)
+                state["errors"] = errors
+                attempt = _inc_retry(state, stage)
+                status = "retrying" if attempt <= _retry_limit() else "failed"
+                _update_state_row(db, record_id, step=stage, status=status, errors=errors)
             return state
 
         def rule_node(state: WorkflowGraphState) -> WorkflowGraphState:
@@ -118,11 +184,61 @@ class LangGraphOrchestrator:
                 _update_state_row(db, record_id, step="payer_rules", status=status, errors=errors)
             return state
 
+        def svm_after_rules_node(state: WorkflowGraphState) -> WorkflowGraphState:
+            stage = "svm_after_rules"
+            state["current_step"] = stage
+            try:
+                svm_results = state.get("svm") or {}
+                prior_svm = []
+                if isinstance(svm_results, dict):
+                    for k in ["svm_after_clinical", "svm_after_coding"]:
+                        v = svm_results.get(k)
+                        if isinstance(v, dict):
+                            prior_svm.append(v)
+                prior_agent_outputs = [
+                    {"agent_name": self.clinical_agent.name, "output": state.get("clinical") or {}},
+                    {"agent_name": self.coding_agent.name, "output": state.get("coding") or {}},
+                ]
+                out = self.svm.validate(
+                    db,
+                    record_id=record_id,
+                    stage=stage,
+                    agent_name=self.payer_rule_agent.name,
+                    raw_text=raw_text,
+                    agent_input={"clinical": state.get("clinical") or {}, "coding": state.get("coding") or {}},
+                    agent_output=state.get("validation") or {},
+                    prior_agent_outputs=prior_agent_outputs,
+                    prior_svm_results=prior_svm,
+                )
+                svm_results[stage] = out
+                state["svm"] = svm_results
+                state["svm_escalated"] = bool(out.get("status") == "escalated" and bool((out.get("decision") or {}).get("trigger_circuit_breaker")))
+                state["errors"] = {}
+                _update_state_row(db, record_id, step=stage, status="ok", errors={})
+            except Exception as e:
+                errors = state.get("errors") or {}
+                errors[stage] = str(e)
+                state["errors"] = errors
+                attempt = _inc_retry(state, stage)
+                status = "retrying" if attempt <= _retry_limit() else "failed"
+                _update_state_row(db, record_id, step=stage, status=status, errors=errors)
+            return state
+
         def next_after_clinical(state: WorkflowGraphState) -> str:
             errors = state.get("errors") or {}
             if "clinical" in errors:
                 if int((state.get("retries") or {}).get("clinical", 0)) <= _retry_limit():
                     return "clinical"
+                return END
+            return "svm_after_clinical"
+
+        def next_after_svm_after_clinical(state: WorkflowGraphState) -> str:
+            errors = state.get("errors") or {}
+            if "svm_after_clinical" in errors:
+                if int((state.get("retries") or {}).get("svm_after_clinical", 0)) <= _retry_limit():
+                    return "svm_after_clinical"
+                return END
+            if bool(state.get("svm_escalated")):
                 return END
             return "coding"
 
@@ -132,6 +248,16 @@ class LangGraphOrchestrator:
                 if int((state.get("retries") or {}).get("coding", 0)) <= _retry_limit():
                     return "coding"
                 return END
+            return "svm_after_coding"
+
+        def next_after_svm_after_coding(state: WorkflowGraphState) -> str:
+            errors = state.get("errors") or {}
+            if "svm_after_coding" in errors:
+                if int((state.get("retries") or {}).get("svm_after_coding", 0)) <= _retry_limit():
+                    return "svm_after_coding"
+                return END
+            if bool(state.get("svm_escalated")):
+                return END
             return "payer_rules"
 
         def next_after_rules(state: WorkflowGraphState) -> str:
@@ -140,16 +266,54 @@ class LangGraphOrchestrator:
                 if int((state.get("retries") or {}).get("payer_rules", 0)) <= _retry_limit():
                     return "payer_rules"
                 return END
+            return "svm_after_rules"
+
+        def next_after_svm_after_rules(state: WorkflowGraphState) -> str:
+            errors = state.get("errors") or {}
+            if "svm_after_rules" in errors:
+                if int((state.get("retries") or {}).get("svm_after_rules", 0)) <= _retry_limit():
+                    return "svm_after_rules"
+                return END
             return END
 
         graph = StateGraph(WorkflowGraphState)
         graph.add_node("clinical", clinical_node)
+        graph.add_node("svm_after_clinical", svm_after_clinical_node)
         graph.add_node("coding", coding_node)
+        graph.add_node("svm_after_coding", svm_after_coding_node)
         graph.add_node("payer_rules", rule_node)
+        graph.add_node("svm_after_rules", svm_after_rules_node)
         graph.set_entry_point("clinical")
-        graph.add_conditional_edges("clinical", next_after_clinical, {"clinical": "clinical", "coding": "coding", END: END})
-        graph.add_conditional_edges("coding", next_after_coding, {"coding": "coding", "payer_rules": "payer_rules", END: END})
-        graph.add_conditional_edges("payer_rules", next_after_rules, {"payer_rules": "payer_rules", END: END})
+        graph.add_conditional_edges(
+            "clinical",
+            next_after_clinical,
+            {"clinical": "clinical", "svm_after_clinical": "svm_after_clinical", END: END},
+        )
+        graph.add_conditional_edges(
+            "svm_after_clinical",
+            next_after_svm_after_clinical,
+            {"svm_after_clinical": "svm_after_clinical", "coding": "coding", END: END},
+        )
+        graph.add_conditional_edges(
+            "coding",
+            next_after_coding,
+            {"coding": "coding", "svm_after_coding": "svm_after_coding", END: END},
+        )
+        graph.add_conditional_edges(
+            "svm_after_coding",
+            next_after_svm_after_coding,
+            {"svm_after_coding": "svm_after_coding", "payer_rules": "payer_rules", END: END},
+        )
+        graph.add_conditional_edges(
+            "payer_rules",
+            next_after_rules,
+            {"payer_rules": "payer_rules", "svm_after_rules": "svm_after_rules", END: END},
+        )
+        graph.add_conditional_edges(
+            "svm_after_rules",
+            next_after_svm_after_rules,
+            {"svm_after_rules": "svm_after_rules", END: END},
+        )
         app = graph.compile()
 
         initial: WorkflowGraphState = {
@@ -157,6 +321,8 @@ class LangGraphOrchestrator:
             "errors": {},
             "retries": {},
             "current_step": "clinical",
+            "svm": {},
+            "svm_escalated": False,
         }
         _update_state_row(db, record_id, step="clinical", status="running", errors={})
         final = app.invoke(initial)

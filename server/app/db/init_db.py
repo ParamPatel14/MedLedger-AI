@@ -6,6 +6,7 @@ from app.models.entity import ClinicalEntity
 from app.models.record import ClinicalRecord
 from app.models.term import ClinicalTerm
 from app.models.workflow import AgentOutput, WorkflowRecord, WorkflowState
+from app.models.svm import SvmAuditLog
 
 
 def init_db() -> None:

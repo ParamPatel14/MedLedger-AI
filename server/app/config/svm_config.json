@@ -1,0 +1,78 @@
+{
+  "version": "1.0",
+  "claim_extraction": {
+    "agents": {
+      "clinical_understanding": {
+        "extractors": [
+          { "type": "diagnosis", "path": "diagnosis[*]", "transforms": ["strip", "lower"] },
+          { "type": "procedure", "path": "procedures[*]", "transforms": ["strip", "lower"] },
+          { "type": "clinical_confidence", "path": "confidence" }
+        ]
+      },
+      "coding": {
+        "extractors": [
+          { "type": "icd_code", "path": "icd_codes[*].code", "transforms": ["strip", "upper"] },
+          { "type": "icd_score", "path": "icd_codes[*].score" },
+          { "type": "diagnosis", "path": "icd_codes[*].source_text", "transforms": ["strip", "lower"] },
+          { "type": "coding_confidence", "path": "confidence" }
+        ]
+      },
+      "payer_rules": {
+        "extractors": [
+          { "type": "payer_is_valid", "path": "is_valid" },
+          { "type": "payer_issue_type", "path": "issues[*].type", "transforms": ["strip", "lower"] },
+          { "type": "payer_confidence", "path": "confidence" }
+        ]
+      }
+    },
+    "generic": { "enabled": false, "max_depth": 5 }
+  },
+  "verification": {
+    "source_alignment": {
+      "enabled": true,
+      "default_method": "semantic_cosine",
+      "min_similarity": 0.25,
+      "severity": "warning",
+      "message": "Claim is weakly supported by source text",
+      "claim_types": {
+        "diagnosis": { "method": "semantic_cosine", "min_similarity": 0.25, "severity": "warning" },
+        "procedure": { "method": "semantic_cosine", "min_similarity": 0.25, "severity": "warning" }
+      }
+    },
+    "inter_agent_consistency": {
+      "enabled": true,
+      "severity_weights": { "info": 0.02, "warning": 0.08, "critical": 0.25 },
+      "rules": [
+        {
+          "id": "coding_requires_diagnosis",
+          "type": "requires",
+          "severity": "critical",
+          "message": "Coding output present without clinical diagnosis context",
+          "if": { "claim_type": "icd_code" },
+          "then_requires": { "claim_type": "diagnosis" }
+        }
+      ]
+    },
+    "reasonability": {
+      "enabled": true,
+      "severity_weights": { "info": 0.02, "warning": 0.06, "critical": 0.2 },
+      "rules": [
+        { "id": "clinical_confidence_range", "type": "numeric_range", "severity": "warning", "path": "confidence", "min": 0.0, "max": 1.0, "message": "Clinical confidence out of expected range" },
+        { "id": "coding_score_range", "type": "numeric_range", "severity": "warning", "path": "icd_codes[*].score", "min": 0.0, "max": 1.0, "message": "ICD similarity score out of expected range" },
+        { "id": "coding_confidence_range", "type": "numeric_range", "severity": "warning", "path": "confidence", "min": 0.0, "max": 1.0, "message": "Coding confidence out of expected range" },
+        { "id": "payer_confidence_range", "type": "numeric_range", "severity": "warning", "path": "confidence", "min": 0.0, "max": 1.0, "message": "Payer confidence out of expected range" }
+      ]
+    }
+  },
+  "scoring": { "weights": { "source_alignment": 0.4, "consistency": 0.3, "reasonability": 0.3 } },
+  "decision": {
+    "pass_threshold": 0.85,
+    "review_threshold": 0.6,
+    "pass_message": "pass",
+    "review_message": "pass_with_warning",
+    "escalated_message": "Insufficient confidence. Escalating for review."
+  },
+  "cascade": { "warning_penalty": 0.05, "max_penalty": 0.2 },
+  "circuit_breaker": { "enabled": true, "stop_on_escalated": true }
+}
+
