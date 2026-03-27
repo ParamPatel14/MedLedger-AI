@@ -42,9 +42,7 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
         raise HTTPException(status_code=422, detail={"record_id": record.id, "errors": errors})
 
     out = ProcessOut(
-        record_id=record.id,
         diagnosis=list(clinical.get("diagnosis") or []),
-        procedures=list(clinical.get("procedures") or []),
         icd_codes=list(coding.get("icd_codes") or []),
         validation=ValidationOut(
             is_valid=bool(validation.get("is_valid")),
@@ -52,10 +50,5 @@ def process(payload: ProcessIn, db: Session = Depends(get_db)) -> ProcessOut:
             confidence=float(validation.get("confidence") or 0.0),
         ),
         confidence=float(state.get("confidence") or 0.0),
-        explanation={
-            "clinical": str(clinical.get("explanation") or ""),
-            "coding": str(coding.get("mapping_reason") or ""),
-        },
     )
     return out
-

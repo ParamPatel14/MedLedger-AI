@@ -14,8 +14,8 @@ class WorkflowRecord(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     raw_text: Mapped[str] = mapped_column(Text, default="")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
-    timestamp = synonym("created_at")
+    timestamp: Mapped[datetime] = mapped_column("timestamp", DateTime(timezone=True), server_default=func.now(), index=True)
+    created_at = synonym("timestamp")
 
 
 class AgentOutput(Base):

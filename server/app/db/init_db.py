@@ -13,3 +13,24 @@ def init_db() -> None:
     if engine is None:
         return
     Base.metadata.create_all(bind=engine)
+
+    try:
+        from sqlalchemy import inspect, text
+
+        insp = inspect(engine)
+        if "records" in set(insp.get_table_names()):
+            cols = {c.get("name") for c in insp.get_columns("records")}
+            if "timestamp" not in cols:
+                with engine.begin() as conn:
+                    dialect = engine.dialect.name
+                    if dialect == "postgresql":
+                        conn.execute(text("ALTER TABLE records ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ DEFAULT NOW()"))
+                    else:
+                        conn.execute(text("ALTER TABLE records ADD COLUMN timestamp DATETIME"))
+                    if "created_at" in cols:
+                        try:
+                            conn.execute(text("UPDATE records SET timestamp = created_at WHERE timestamp IS NULL"))
+                        except Exception:
+                            pass
+    except Exception:
+        return
