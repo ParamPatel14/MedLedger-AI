@@ -40,6 +40,22 @@ export async function runAgentWorkflowTrace(text) {
   return res.json()
 }
 
+export async function runClaimExplain(text) {
+  const res = await fetch('/api/process/explain', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  })
+  if (!res.ok) throw new Error(`Explain request failed (${res.status})`)
+  return res.json()
+}
+
+export async function getExplainabilityAudit(auditId) {
+  const res = await fetch(`/api/process/explain/audit/${encodeURIComponent(auditId)}`)
+  if (!res.ok) throw new Error(`Audit request failed (${res.status})`)
+  return res.json()
+}
+
 async function uploadFile(path, file) {
   const form = new FormData()
   form.append('file', file)
