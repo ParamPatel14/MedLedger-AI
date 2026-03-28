@@ -58,6 +58,18 @@ def db_session(tmp_path: Path):
         db.close()
 
 
+@pytest.fixture()
+def client(tmp_path: Path):
+    db_path = tmp_path / "test_explainability_api.db"
+    _bootstrap_test_db(db_path)
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    with TestClient(create_app()) as c:
+        yield c
+
+
 def test_explainability_service_generates_and_persists_audit(db_session):
     from app.layers.explainability_layer.service import ExplainabilityService
     from app.models.governance import GovernanceAuditLog
@@ -110,3 +122,19 @@ def test_explainability_service_generates_and_persists_audit(db_session):
     assert row is not None
     assert row.record_id == record.id
 
+
+def test_process_explain_endpoint_returns_structured_output(client):
+    res = client.post("/process/explain", json={"text": "Patient has diabetes and hypertension. Room rent limit noted."})
+    assert res.status_code == 200
+    payload = res.json()
+    assert str(payload.get("decision") or "")
+    assert float(payload.get("confidence") or 0.0) >= 0.0
+    assert str(payload.get("audit_id") or "")
+    assert isinstance(payload.get("trace"), dict)
+    assert isinstance(payload.get("explanations"), list)
+    if payload.get("explanations"):
+        item = payload["explanations"][0]
+        assert "type" in item
+        assert "explanation" in item
+        assert "confidence" in item
+        assert "details" in item

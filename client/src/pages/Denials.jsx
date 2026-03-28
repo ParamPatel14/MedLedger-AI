@@ -6,12 +6,11 @@ export default function Denials() {
     <div className="container">
       <section className="section">
         <div className="sectionHeader">
-          <h2 className="sectionTitle">Denial Recovery Dashboard</h2>
-          <p className="sectionSubtitle">Monitor denied claims, recovery progress, and recovered revenue.</p>
+          <h2 className="sectionTitle">Business Impact Dashboard</h2>
+          <p className="sectionSubtitle">Revenue recovered, denial reduction, and automation metrics.</p>
         </div>
         <DenialRecoveryPanel />
       </section>
     </div>
   )
 }
-

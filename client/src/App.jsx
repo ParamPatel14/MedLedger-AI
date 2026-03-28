@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import Extract from './pages/Extract'
 import Denials from './pages/Denials'
 import Rules from './pages/Rules'
+import AgentWorkflowPanel from './components/AgentWorkflowPanel'
+import ClaimExplanationPanel from './components/ClaimExplanationPanel'
 import './App.css'
 
 function App() {
@@ -17,9 +19,13 @@ function App() {
     setPath(to)
   }
 
-  const isExtract = path === '/extract'
-  const isDenials = path === '/denials'
+  const isClaim = path === '/claim' || path === '/extract'
+  const isFlow = path === '/flow'
+  const isVerify = path === '/verify'
+  const isImpact = path === '/impact' || path === '/denials'
   const isRules = path === '/rules'
+  const isHome = !(isClaim || isFlow || isVerify || isImpact || isRules)
+
   return (
     <div className="appShell">
       <header className="topBar">
@@ -32,96 +38,73 @@ function App() {
             </div>
           </div>
 
-          {!isExtract && (
-            <nav className="nav">
-              <a className="navLink" href="#features">
-                Features
-              </a>
-              <a
-                className="navLink"
-                href="/rules"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/rules')
-                }}
-              >
-                Rules
-              </a>
-              <a
-                className="navLink ctaLink"
-                href="/extract"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/extract')
-                }}
-              >
-                Try Extraction
-              </a>
-            </nav>
-          )}
-          {(isExtract || isDenials) && (
-            <nav className="nav">
-              <a
-                className="navLink"
-                href="/rules"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/rules')
-                }}
-              >
-                Rules
-              </a>
-              <a
-                className="navLink"
-                href="/denials"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/denials')
-                }}
-              >
-                Denials
-              </a>
-              <a
-                className="navLink"
-                href="/"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/')
-                }}
-              >
-                Home
-              </a>
-            </nav>
-          )}
-          {isRules && (
-            <nav className="nav">
-              <a
-                className="navLink"
-                href="/denials"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/denials')
-                }}
-              >
-                Denials
-              </a>
-              <a
-                className="navLink"
-                href="/"
-                onClick={(e) => {
-                  e.preventDefault()
-                  navigate('/')
-                }}
-              >
-                Home
-              </a>
-            </nav>
-          )}
+          <nav className="nav">
+            <a
+              className={`navLink ${isClaim ? 'active' : ''}`}
+              href="/claim"
+              onClick={(e) => {
+                e.preventDefault()
+                navigate('/claim')
+              }}
+            >
+              Claim Processing
+            </a>
+            <a
+              className={`navLink ${isFlow ? 'active' : ''}`}
+              href="/flow"
+              onClick={(e) => {
+                e.preventDefault()
+                navigate('/flow')
+              }}
+            >
+              Agent Flow
+            </a>
+            <a
+              className={`navLink ${isVerify ? 'active' : ''}`}
+              href="/verify"
+              onClick={(e) => {
+                e.preventDefault()
+                navigate('/verify')
+              }}
+            >
+              Verification
+            </a>
+            <a
+              className={`navLink ${isImpact ? 'active' : ''}`}
+              href="/impact"
+              onClick={(e) => {
+                e.preventDefault()
+                navigate('/impact')
+              }}
+            >
+              Impact
+            </a>
+            <a
+              className={`navLink ${isRules ? 'active' : ''}`}
+              href="/rules"
+              onClick={(e) => {
+                e.preventDefault()
+                navigate('/rules')
+              }}
+            >
+              Rules
+            </a>
+            <a
+              className="navLink"
+              href="/"
+              onClick={(e) => {
+                e.preventDefault()
+                navigate('/')
+              }}
+            >
+              Home
+            </a>
+          </nav>
         </div>
       </header>
 
       <main>
-        {!isExtract && !isDenials && (
+        {isHome && (
           <div className="container">
             <section className="heroSection" id="get-started">
               <div className="heroCopy">
@@ -132,13 +115,13 @@ function App() {
                 <div className="heroActions">
                   <a
                     className="btn btnPrimary"
-                    href="/extract"
+                    href="/claim"
                     onClick={(e) => {
                       e.preventDefault()
-                      navigate('/extract')
+                      navigate('/claim')
                     }}
                   >
-                    Start Extraction
+                    Start Demo
                   </a>
                   <a className="btn btnGhost" href="#features">
                     Explore Features
@@ -216,8 +199,31 @@ function App() {
             </section>
           </div>
         )}
-        {isExtract && <Extract />}
-        {isDenials && <Denials />}
+        {isClaim && <Extract />}
+        {isFlow && (
+          <div className="container">
+            <section className="section">
+              <div className="sectionHeader">
+                <h2 className="sectionTitle">Agent Flow Visualization</h2>
+                <p className="sectionSubtitle">Clinical → Coding → Rule → Final (with confidence).</p>
+              </div>
+              <AgentWorkflowPanel view="flow" />
+            </section>
+          </div>
+        )}
+        {isVerify && (
+          <div className="container">
+            <section className="section">
+              <div className="sectionHeader">
+                <h2 className="sectionTitle">Verification + Guardrails</h2>
+                <p className="sectionSubtitle">SVM results, policy decisions, and alerts.</p>
+              </div>
+              <AgentWorkflowPanel view="verification" />
+              <ClaimExplanationPanel />
+            </section>
+          </div>
+        )}
+        {isImpact && <Denials />}
         {isRules && <Rules />}
       </main>
 
