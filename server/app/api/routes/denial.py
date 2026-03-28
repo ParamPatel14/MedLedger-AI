@@ -1,12 +1,16 @@
 from __future__ import annotations
 
+from datetime import datetime
+from typing import Any, Dict, List, Optional, Tuple
+
 from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.layers.denial_layer.config import get_denial_thresholds
 from app.layers.denial_layer.service import DenialManagementAgent
-from app.models.denial import Claim, DenialEvent
+from app.models.denial import Claim, CorrectionApplied, DenialEvent, Resubmission
 from app.schemas.denial import (
     ClaimCreateIn,
     ClaimOut,
@@ -91,3 +95,170 @@ def post_claim_outcome(payload: ClaimOutcomeIn, db: Session = Depends(get_db)) -
     agent = DenialManagementAgent()
     agent.record_outcome(db, claim_id=claim.id, outcome_status=str(payload.outcome_status or ""))
     return DenialAgentRunOut(status="recorded", denial_reason=None, root_cause=None, action_taken=None, confidence=0.0, audit={})
+
+
+def _safe_number(v: Any) -> float:
+    try:
+        return float(v)
+    except Exception:
+        return 0.0
+
+
+def _safe_iso(dt: Any) -> str:
+    if isinstance(dt, datetime):
+        try:
+            return dt.isoformat()
+        except Exception:
+            return ""
+    return ""
+
+
+def _claim_amount(claim_data: dict) -> float:
+    if not isinstance(claim_data, dict):
+        return 0.0
+    billing = claim_data.get("billing")
+    if isinstance(billing, dict):
+        return _safe_number(billing.get("amount"))
+    return 0.0
+
+
+def _timeline_steps(
+    *,
+    claim: Claim,
+    denials: List[DenialEvent],
+    corrections: List[CorrectionApplied],
+    resubmissions: List[Resubmission],
+) -> List[Dict[str, Any]]:
+    events: List[Tuple[str, datetime]] = []
+    if getattr(claim, "created_at", None) is not None:
+        events.append(("submitted", claim.created_at))
+
+    for d in denials:
+        ts = getattr(d, "created_at", None)
+        if isinstance(ts, datetime):
+            events.append(("denied", ts))
+
+    for c in corrections:
+        ts = getattr(c, "created_at", None)
+        if isinstance(ts, datetime):
+            events.append(("fixed", ts))
+
+    for r in resubmissions:
+        ts = getattr(r, "created_at", None)
+        if isinstance(ts, datetime):
+            events.append(("resubmitted", ts))
+
+    terminal = str(getattr(claim, "status", "") or "").strip().lower()
+    if terminal == "approved" and getattr(claim, "updated_at", None) is not None:
+        events.append(("approved", claim.updated_at))
+
+    events_sorted = sorted(events, key=lambda x: x[1])
+    out: List[Dict[str, Any]] = []
+    seen: set[str] = set()
+    for step, ts in events_sorted:
+        if step in seen:
+            continue
+        seen.add(step)
+        out.append({"step": step, "timestamp": _safe_iso(ts)})
+    return out
+
+
+def _progress_from_state(claim: Claim, *, denials: int, corrections: int, resubmits: int) -> Dict[str, Any]:
+    status = str(getattr(claim, "status", "") or "").strip().lower()
+    if status == "approved":
+        stage = "approved"
+    elif resubmits > 0 or status == "resubmitted":
+        stage = "resubmitted"
+    elif corrections > 0:
+        stage = "fixed"
+    elif denials > 0 or status in {"denied", "query"}:
+        stage = "denied"
+    else:
+        stage = "submitted"
+
+    order = ["submitted", "denied", "fixed", "resubmitted", "approved"]
+    try:
+        idx = order.index(stage)
+    except Exception:
+        idx = 0
+    pct = int(round((idx / max(1, (len(order) - 1))) * 100.0))
+    return {"stage": stage, "percent": pct}
+
+
+@router.get("/denials/dashboard")
+def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    thresholds_cfg = get_denial_thresholds()
+    triggers = thresholds_cfg.get("triggers") or {}
+    watched_statuses = [str(x).strip().lower() for x in (triggers.get("activate_on_status") or []) if str(x).strip()]
+    if not watched_statuses:
+        watched_statuses = ["denied", "query"]
+
+    claims = db.query(Claim).order_by(Claim.updated_at.desc()).limit(200).all()
+
+    total_claims = len(claims)
+    denied_claims_count = 0
+    recovered_claims = 0
+    revenue_recovered = 0.0
+
+    rows: List[Dict[str, Any]] = []
+    for claim in claims:
+        denials = db.query(DenialEvent).filter(DenialEvent.claim_id == claim.id).order_by(DenialEvent.created_at.asc()).all()
+        corrections = (
+            db.query(CorrectionApplied).filter(CorrectionApplied.claim_id == claim.id).order_by(CorrectionApplied.created_at.asc()).all()
+        )
+        resubs = db.query(Resubmission).filter(Resubmission.claim_id == claim.id).order_by(Resubmission.created_at.asc()).all()
+
+        denials_count = len([d for d in denials if str(getattr(d, "status", "") or "").strip().lower() in watched_statuses])
+        if denials_count > 0:
+            denied_claims_count += 1
+
+        amount = _claim_amount(claim.claim_data or {})
+        status = str(getattr(claim, "status", "") or "").strip().lower()
+        if status == "approved" and denials_count > 0:
+            recovered_claims += 1
+            revenue_recovered += amount
+
+        last_denial = denials[-1] if denials else None
+        last_corr = corrections[-1] if corrections else None
+        last_resub = resubs[-1] if resubs else None
+
+        timeline = _timeline_steps(claim=claim, denials=denials, corrections=corrections, resubmissions=resubs)
+        progress = _progress_from_state(claim, denials=denials_count, corrections=len(corrections), resubmits=len(resubs))
+
+        if denials_count > 0 or status in watched_statuses:
+            denial_types: List[str] = []
+            if last_denial is not None and isinstance(getattr(last_denial, "structured_reasons", None), list):
+                denial_types = [str(x.get("type") or "").strip() for x in (last_denial.structured_reasons or []) if isinstance(x, dict)]
+                denial_types = [t for t in denial_types if t]
+            rows.append(
+                {
+                    "claim_id": claim.id,
+                    "record_id": claim.record_id,
+                    "status": claim.status,
+                    "amount": amount,
+                    "denial_types": denial_types,
+                    "denials_count": denials_count,
+                    "corrections_count": len(corrections),
+                    "resubmissions_count": len(resubs),
+                    "last_denial_event_id": getattr(last_denial, "id", None),
+                    "last_correction_id": getattr(last_corr, "id", None),
+                    "last_resubmission_id": getattr(last_resub, "id", None),
+                    "last_confidence": float(getattr(last_corr, "confidence", 0.0) or 0.0) if last_corr is not None else 0.0,
+                    "progress": progress,
+                    "timeline": timeline,
+                    "updated_at": _safe_iso(getattr(claim, "updated_at", None)),
+                }
+            )
+
+    recovered_pct = float(recovered_claims / max(1, denied_claims_count) * 100.0) if denied_claims_count else 0.0
+
+    return {
+        "metrics": {
+            "total_claims": total_claims,
+            "denied_claims": denied_claims_count,
+            "recovered_claims": recovered_claims,
+            "recovered_percent": recovered_pct,
+            "revenue_recovered": revenue_recovered,
+        },
+        "denied_claims": rows,
+    }

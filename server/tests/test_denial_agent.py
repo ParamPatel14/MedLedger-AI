@@ -116,3 +116,56 @@ def test_denial_loop_detection_escalates(client):
     assert last is not None
     payload = last.json()
     assert payload["status"] == "escalated"
+
+
+def test_denial_unknown_reason_escalates(client):
+    res = client.post("/claims", json={"status": "pending", "record_id": None, "claim_data": {"billing": {"amount": 12500}, "attachments": []}})
+    assert res.status_code == 200
+    claim_id = res.json()["id"]
+
+    run = client.post(
+        "/claims/status",
+        json={
+            "claim_id": claim_id,
+            "status": "denied",
+            "tpa_response_text": "Denied due to internal payer exception code ZXQ-999.",
+            "rejection_codes": ["ZXQ-999"],
+        },
+    )
+    assert run.status_code == 200
+    data = run.json()
+    assert data["status"] == "escalated"
+    assert isinstance(data.get("denial_reason"), list)
+    assert any(str(x.get("type") or "") == "unknown" for x in data["denial_reason"] if isinstance(x, dict))
+
+
+def test_denial_dashboard_endpoint(client):
+    res = client.post(
+        "/claims",
+        json={
+            "status": "pending",
+            "record_id": None,
+            "claim_data": {"billing": {"amount": 20000}, "available_documents": [{"type": "discharge_summary", "content": "ok"}], "attachments": []},
+        },
+    )
+    assert res.status_code == 200
+    claim_id = res.json()["id"]
+
+    run = client.post(
+        "/claims/status",
+        json={
+            "claim_id": claim_id,
+            "status": "denied",
+            "tpa_response_text": "Denied - missing document. Please attach discharge summary.",
+            "rejection_codes": ["MD01"],
+        },
+    )
+    assert run.status_code == 200
+
+    dash = client.get("/denials/dashboard")
+    assert dash.status_code == 200
+    payload = dash.json()
+    assert "metrics" in payload
+    assert "denied_claims" in payload
+    assert isinstance(payload["denied_claims"], list)
+    assert any(str(r.get("claim_id") or "") == claim_id for r in payload["denied_claims"] if isinstance(r, dict))

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import Extract from './pages/Extract'
+import Denials from './pages/Denials'
 import './App.css'
 
 function App() {
@@ -16,6 +17,7 @@ function App() {
   }
 
   const isExtract = path === '/extract'
+  const isDenials = path === '/denials'
   return (
     <div className="appShell">
       <header className="topBar">
@@ -45,8 +47,18 @@ function App() {
               </a>
             </nav>
           )}
-          {isExtract && (
+          {(isExtract || isDenials) && (
             <nav className="nav">
+              <a
+                className="navLink"
+                href="/denials"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/denials')
+                }}
+              >
+                Denials
+              </a>
               <a
                 className="navLink"
                 href="/"
@@ -63,7 +75,7 @@ function App() {
       </header>
 
       <main>
-        {!isExtract && (
+        {!isExtract && !isDenials && (
           <div className="container">
             <section className="heroSection" id="get-started">
               <div className="heroCopy">
@@ -159,6 +171,7 @@ function App() {
           </div>
         )}
         {isExtract && <Extract />}
+        {isDenials && <Denials />}
       </main>
 
       <footer className="footer mt-auto py-8">

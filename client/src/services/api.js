@@ -74,3 +74,9 @@ export async function importClinicalTerms(terms) {
   if (!res.ok) throw new Error(`Term import failed (${res.status})`)
   return res.json()
 }
+
+export async function getDenialDashboard() {
+  const res = await fetch('/api/denials/dashboard')
+  if (!res.ok) throw new Error(`Denial dashboard failed (${res.status})`)
+  return res.json()
+}
