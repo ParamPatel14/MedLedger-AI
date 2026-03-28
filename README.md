@@ -1,10 +1,14 @@
 # MedLedger AI
 
-MedLedger AI is a FastAPI + LangGraph backend with a React + Vite frontend for:
+MedLedger AI is an end-to-end, agentic claims intelligence prototype for healthcare workflows. It extracts structured clinical context from messy records, proposes ICD-10 codes, validates outputs with semantic verification, applies policy guardrails, and produces an audit-ready explanation trail for every decision.
+
+It is designed for demo and stakeholder review with a UI that makes the pipeline transparent (what each agent produced, why the system decided to approve/warn/block/escalate, and how confident it is).
+
+Core capabilities:
 - Clinical entity extraction (diagnoses, procedures, medications)
 - ICD-10 coding assistance
-- Semantic verification (SVM) across pipeline stages
-- Governance/guardrails (policy evaluation, refusal/escalation)
+- Semantic verification (SVM) across pipeline stages (alignment/consistency/reasonability)
+- Governance + guardrails (policy evaluation, refusal/escalation, alerts)
 - Explainability + audit trail (template-driven explanations, trace IDs, confidence transparency)
 - Denial recovery + business impact dashboard (denials → corrections → resubmissions → recovered revenue)
 
@@ -13,6 +17,16 @@ The UI is demo-oriented with 4 key screens:
 - Agent Flow Visualization (`/flow`)
 - Verification + Guardrails (`/verify`)
 - Business Impact Dashboard (`/impact`)
+
+Quick demo start:
+1. Start backend:
+   - `cd server`
+   - `uvicorn app.main:app --reload --host 127.0.0.1 --port 8000`
+2. Start frontend:
+   - `cd client`
+   - `npm install`
+   - `npm run dev`
+3. Open `http://localhost:5173/claim`
 
 ---
 
@@ -43,27 +57,27 @@ The UI is demo-oriented with 4 key screens:
 
 ```mermaid
 flowchart TD
-  A[Raw Claim Text / Uploaded Record] --> B[WorkflowRecord + WorkflowState]
+  A[Raw claim text or uploaded record] --> B[WorkflowRecord and WorkflowState]
 
   B --> C[ClinicalUnderstandingAgent]
-  C --> C1[SVM: svm_after_clinical]
+  C --> C1[SVM after clinical]
 
-  C1 --> D[CodingAgent (ICD-10)]
-  D --> D1[SVM: svm_after_coding]
+  C1 --> D[CodingAgent ICD-10]
+  D --> D1[SVM after coding]
 
-  D1 --> E[PayerRuleAgent (rules/validation)]
-  E --> E1[SVM: svm_after_rules]
+  D1 --> E[PayerRuleAgent rules and validation]
+  E --> E1[SVM after rules]
 
-  E1 --> F[GovernanceLayer\n(policy engine + refusal + escalation)]
-  F --> G[ExplainabilityService\n(template-driven explanations + trace)]
+  E1 --> F[GovernanceLayer policy and guardrails]
+  F --> G[ExplainabilityService templates and trace]
 
-  G --> H[(ExplainabilityAuditTrail)]
-  F --> I[(GovernanceAuditLog)]
-  C1 --> J[(SvmAuditLog)]
+  G --> H[ExplainabilityAuditTrail]
+  F --> I[GovernanceAuditLog]
+  C1 --> J[SvmAuditLog]
   D1 --> J
   E1 --> J
 
-  G --> K[API Response\n{decision, confidence, explanations, trace, audit_id}]
+  G --> K[API response decision confidence explanations trace audit_id]
 ```
 
 ### Denial recovery pipeline (business impact)
@@ -71,13 +85,13 @@ flowchart TD
 ```mermaid
 flowchart TD
   A[Claim Status Update] --> B[DenialEvent]
-  B --> C[DenialManagementAgent (LangGraph)]
+  B --> C[DenialManagementAgent LangGraph]
   C --> D[DenialReasonEngine]
   C --> E[RootCauseEngine]
   C --> F[CorrectionEngine]
   C --> G[ResubmissionEngine]
-  C --> H[LearningService (outcomes)]
-  C --> I[(Claims/Denial tables)]
+  C --> H[LearningService outcomes]
+  C --> I[Claims and Denials tables]
   I --> J[Denial Dashboard API]
   J --> K[Business Impact UI]
 ```
@@ -92,10 +106,10 @@ Explainability is generated from:
 - **Config-driven rules** that decide what to emit and how to fill template parameters
 
 Key files:
-- Templates: [server/app/config/explainability_templates.json](file:///C:/Projects/MedLedger%20AI/server/app/config/explainability_templates.json)
-- Rules: [server/app/config/explainability_rules.json](file:///C:/Projects/MedLedger%20AI/server/app/config/explainability_rules.json)
-- Engine: [server/app/layers/explainability_layer/explanation_engine.py](file:///C:/Projects/MedLedger%20AI/server/app/layers/explainability_layer/explanation_engine.py)
-- Service + persistence: [server/app/layers/explainability_layer/service.py](file:///C:/Projects/MedLedger%20AI/server/app/layers/explainability_layer/service.py)
+- Templates: [server/app/config/explainability_templates.json](server/app/config/explainability_templates.json)
+- Rules: [server/app/config/explainability_rules.json](server/app/config/explainability_rules.json)
+- Engine: [server/app/layers/explainability_layer/explanation_engine.py](server/app/layers/explainability_layer/explanation_engine.py)
+- Service + persistence: [server/app/layers/explainability_layer/service.py](server/app/layers/explainability_layer/service.py)
 
 Each explanation item is returned as structured JSON:
 ```json
@@ -133,14 +147,14 @@ Base URL in dev: `http://127.0.0.1:8000`
 - Additional denial endpoints exist for claim status/outcomes and Gmail ingestion
 
 Routes are defined under:
-- [server/app/api/routes](file:///C:/Projects/MedLedger%20AI/server/app/api/routes)
+- [server/app/api/routes](server/app/api/routes)
 
 ---
 
 ## Frontend (Demo Screens)
 
 The Vite dev server proxies `/api/*` → `http://127.0.0.1:8000/*`:
-- [client/vite.config.js](file:///C:/Projects/MedLedger%20AI/client/vite.config.js)
+- [client/vite.config.js](client/vite.config.js)
 
 ### 1) Claim Processing (`/claim`)
 Upload a record or paste text and show:
@@ -148,7 +162,7 @@ Upload a record or paste text and show:
 - ICD-10 codes + match score
 
 Key component:
-- [ClinicalExtractorPanel.jsx](file:///C:/Projects/MedLedger%20AI/client/src/components/ClinicalExtractorPanel.jsx)
+- [ClinicalExtractorPanel.jsx](client/src/components/ClinicalExtractorPanel.jsx)
 
 ### 2) Agent Flow Visualization (`/flow`)
 Shows:
@@ -156,7 +170,7 @@ Shows:
 - Per-step outputs + ICD table
 
 Key component:
-- [AgentWorkflowPanel.jsx](file:///C:/Projects/MedLedger%20AI/client/src/components/AgentWorkflowPanel.jsx)
+- [AgentWorkflowPanel.jsx](client/src/components/AgentWorkflowPanel.jsx)
 
 ### 3) Verification + Guardrail Panel (`/verify`)
 Shows:
@@ -165,8 +179,8 @@ Shows:
 - Claim explanation panel (template-driven explanations + expandable details + audit JSON fetch)
 
 Key components:
-- [AgentWorkflowPanel.jsx](file:///C:/Projects/MedLedger%20AI/client/src/components/AgentWorkflowPanel.jsx)
-- [ClaimExplanationPanel.jsx](file:///C:/Projects/MedLedger%20AI/client/src/components/ClaimExplanationPanel.jsx)
+- [AgentWorkflowPanel.jsx](client/src/components/AgentWorkflowPanel.jsx)
+- [ClaimExplanationPanel.jsx](client/src/components/ClaimExplanationPanel.jsx)
 
 ### 4) Business Impact Dashboard (`/impact`)
 Shows:
@@ -176,11 +190,11 @@ Shows:
 - Denied claims table + timeline
 
 Key components:
-- [Denials.jsx](file:///C:/Projects/MedLedger%20AI/client/src/pages/Denials.jsx)
-- [DenialRecoveryPanel.jsx](file:///C:/Projects/MedLedger%20AI/client/src/components/DenialRecoveryPanel.jsx)
+- [Denials.jsx](client/src/pages/Denials.jsx)
+- [DenialRecoveryPanel.jsx](client/src/components/DenialRecoveryPanel.jsx)
 
 Navigation and routes:
-- [client/src/App.jsx](file:///C:/Projects/MedLedger%20AI/client/src/App.jsx)
+- [client/src/App.jsx](client/src/App.jsx)
 
 ---
 
@@ -288,10 +302,9 @@ server/
 
 - Frontend calls fail with 404:
   - Ensure backend is running on `127.0.0.1:8000`
-  - Ensure Vite proxy is enabled: [vite.config.js](file:///C:/Projects/MedLedger%20AI/client/vite.config.js)
+  - Ensure Vite proxy is enabled: [vite.config.js](client/vite.config.js)
 - DB errors:
   - Check `GET /db/health`
   - If using Postgres, verify `DATABASE_URL` and connectivity
 - Gemini features not working:
   - Set `GEMINI_API_KEY` (and optionally model env vars)
-
