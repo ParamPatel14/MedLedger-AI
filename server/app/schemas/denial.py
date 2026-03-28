@@ -48,3 +48,12 @@ class DenialGmailPullIn(BaseModel):
     label_ids: List[str] = Field(default_factory=list)
     max_results: int = 10
     run_agent: bool = False
+
+
+class VapiOutboundCallIn(BaseModel):
+    claim_id: str
+    insurer_number: str
+    denial_event_id: Optional[int] = None
+    assistant_id: Optional[str] = None
+    phone_number_id: Optional[str] = None
+    variable_values: Dict[str, Any] = Field(default_factory=dict)

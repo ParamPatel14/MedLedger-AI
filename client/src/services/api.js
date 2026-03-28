@@ -97,31 +97,40 @@ export async function getDenialDashboard() {
   return res.json()
 }
 
-export async function voiceDenialQuery({ audioWavBlob, claimId = '', denialEventId = '', mode = 'auto' }) {
-  const form = new FormData()
-  form.append('audio', audioWavBlob, 'voice.wav')
-  if (claimId) form.append('claim_id', claimId)
-  if (denialEventId !== '' && denialEventId !== null && denialEventId !== undefined) form.append('denial_event_id', String(denialEventId))
-  if (mode) form.append('mode', mode)
-  const res = await fetch('/api/denials/voice/query', { method: 'POST', body: form })
+export async function startVapiOutboundCall({ claimId, denialEventId = null, insurerNumber, assistantId = '', phoneNumberId = '' }) {
+  const res = await fetch('/api/denials/vapi/call', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      claim_id: claimId,
+      denial_event_id: denialEventId,
+      insurer_number: insurerNumber,
+      assistant_id: assistantId || undefined,
+      phone_number_id: phoneNumberId || undefined,
+    }),
+  })
   if (!res.ok) {
     const txt = await res.text().catch(() => '')
-    throw new Error(`Voice query failed (${res.status})${txt ? `: ${txt}` : ''}`)
+    throw new Error(`Vapi call failed (${res.status})${txt ? `: ${txt}` : ''}`)
   }
   return res.json()
 }
 
-export async function voiceSpeak(text) {
-  const res = await fetch('/api/denials/voice/speak', {
+export async function syncVapiCall({ callId, claimId = '', denialEventId = null }) {
+  const res = await fetch('/api/denials/vapi/sync', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({
+      call_id: callId,
+      claim_id: claimId || undefined,
+      denial_event_id: denialEventId ?? undefined,
+    }),
   })
   if (!res.ok) {
     const txt = await res.text().catch(() => '')
-    throw new Error(`Voice speak failed (${res.status})${txt ? `: ${txt}` : ''}`)
+    throw new Error(`Vapi sync failed (${res.status})${txt ? `: ${txt}` : ''}`)
   }
-  return res.blob()
+  return res.json()
 }
 
 export async function listRules({ tpa = '', category = '', ruleType = '', active = true, limit = 50, offset = 0 } = {}) {

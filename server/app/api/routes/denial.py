@@ -1,15 +1,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+import json
 import os
 import re
-import subprocess
-import uuid
-from pathlib import Path
+import urllib.error
+import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from fastapi.responses import Response
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
@@ -25,6 +24,7 @@ from app.schemas.denial import (
     DenialEmailParseIn,
     DenialGmailPullIn,
     DenialAgentRunOut,
+    VapiOutboundCallIn,
 )
 from app.services.gmail import GmailApiClient
 
@@ -325,83 +325,10 @@ def gmail_status() -> Dict[str, Any]:
         },
     }
 
-
-def _tmp_dir() -> Path:
-    base = Path(__file__).resolve().parents[3] / ".tmp"
-    base.mkdir(parents=True, exist_ok=True)
-    return base
-
-
-def _whisper_cfg() -> Dict[str, str]:
-    return {
-        "bin": str((os.getenv("WHISPER_CPP_BIN") or "").strip()),
-        "model": str((os.getenv("WHISPER_CPP_MODEL") or "").strip()),
-        "args": str((os.getenv("WHISPER_CPP_ARGS") or "").strip()),
-    }
-
-
-def _piper_cfg() -> Dict[str, str]:
-    return {
-        "bin": str((os.getenv("PIPER_BIN") or "").strip()),
-        "model": str((os.getenv("PIPER_MODEL") or "").strip()),
-        "args": str((os.getenv("PIPER_ARGS") or "").strip()),
-    }
-
-
-def _transcribe_with_whisper_cpp(audio_path: Path) -> str:
-    cfg = _whisper_cfg()
-    if not cfg["bin"] or not cfg["model"]:
-        raise RuntimeError("Missing WHISPER_CPP_BIN or WHISPER_CPP_MODEL")
-    out_base = _tmp_dir() / f"whisper_{uuid.uuid4().hex}"
-    cmd: List[str] = [cfg["bin"], "-m", cfg["model"], "-f", str(audio_path), "-otxt", "-of", str(out_base)]
-    extra = [p for p in re.split(r"\s+", cfg["args"]) if p.strip()] if cfg["args"] else []
-    cmd.extend(extra)
-    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
-    if proc.returncode != 0:
-        msg = (proc.stderr or proc.stdout or "").strip() or "whisper.cpp failed"
-        raise RuntimeError(msg)
-    txt_path = Path(str(out_base) + ".txt")
-    if txt_path.exists():
-        return txt_path.read_text(encoding="utf-8", errors="replace").strip()
-    return (proc.stdout or "").strip()
-
-
-def _speak_with_piper(text: str) -> bytes:
-    cfg = _piper_cfg()
-    if not cfg["bin"] or not cfg["model"]:
-        raise RuntimeError("Missing PIPER_BIN or PIPER_MODEL")
-    out_path = _tmp_dir() / f"piper_{uuid.uuid4().hex}.wav"
-    cmd: List[str] = [cfg["bin"], "--model", cfg["model"], "--output_file", str(out_path)]
-    extra = [p for p in re.split(r"\s+", cfg["args"]) if p.strip()] if cfg["args"] else []
-    cmd.extend(extra)
-    proc = subprocess.run(cmd, input=str(text or ""), capture_output=True, text=True, timeout=60)
-    if proc.returncode != 0:
-        msg = (proc.stderr or proc.stdout or "").strip() or "piper failed"
-        raise RuntimeError(msg)
-    if not out_path.exists():
-        raise RuntimeError("piper did not produce output")
-    return out_path.read_bytes()
-
-
 def _extract_claim_id_from_text(text: str) -> str:
     t = str(text or "")
     m = re.search(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", t)
     return str(m.group(0)) if m else ""
-
-
-def _infer_intent(text: str) -> str:
-    t = str(text or "").strip().lower()
-    if not t:
-        return "unknown"
-    if any(k in t for k in ["resubmit", "resubmission", "submit again", "send again"]):
-        return "resubmit"
-    if any(k in t for k in ["fix", "correct", "apply correction", "resolve", "recover"]):
-        return "fix"
-    if any(k in t for k in ["why", "reason", "denial", "explain", "details", "summary", "what happened"]):
-        return "summarize"
-    if any(k in t for k in ["missing", "document", "attachment", "rejection", "denied because", "rejected because"]):
-        return "provide_denial_reason"
-    return "unknown"
 
 
 def _has_denial_details(ev: Optional[DenialEvent]) -> bool:
@@ -432,146 +359,421 @@ def _denial_summary(claim: Claim, ev: Optional[DenialEvent]) -> Dict[str, Any]:
     return out
 
 
-@router.post("/denials/voice/query")
-async def denial_voice_query(
-    audio: UploadFile = File(...),
-    claim_id: str = Form(default=""),
-    denial_event_id: str = Form(default=""),
-    mode: str = Form(default="auto"),
-    db: Session = Depends(get_db),
-) -> Dict[str, Any]:
-    raw = await audio.read()
-    if not raw:
-        raise HTTPException(status_code=400, detail="Missing audio")
+def _vapi_cfg() -> Dict[str, str]:
+    return {
+        "api_key": str((os.getenv("VAPI_API_KEY") or "").strip()),
+        "base_url": str((os.getenv("VAPI_BASE_URL") or "").strip() or "https://api.vapi.ai"),
+        "assistant_id": str((os.getenv("VAPI_ASSISTANT_ID") or "").strip()),
+        "phone_number_id": str((os.getenv("VAPI_PHONE_NUMBER_ID") or "").strip()),
+    }
 
-    suffix = ".wav"
-    ct = str(getattr(audio, "content_type", "") or "").lower()
-    if "wav" in ct:
-        suffix = ".wav"
 
-    audio_path = _tmp_dir() / f"voice_{uuid.uuid4().hex}{suffix}"
-    audio_path.write_bytes(raw)
+@router.get("/denials/vapi/status")
+def vapi_status() -> Dict[str, Any]:
+    cfg = _vapi_cfg()
+    return {
+        "ready": bool(cfg["api_key"] and cfg["assistant_id"] and cfg["phone_number_id"]),
+        "env": {
+            "has_api_key": bool(cfg["api_key"]),
+            "has_assistant_id": bool(cfg["assistant_id"]),
+            "has_phone_number_id": bool(cfg["phone_number_id"]),
+            "base_url": cfg["base_url"],
+        },
+    }
 
+
+
+def _vapi_post_json(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    cfg = _vapi_cfg()
+    if not cfg["api_key"]:
+        raise RuntimeError("Missing VAPI_API_KEY")
+    url = cfg["base_url"].rstrip("/") + "/" + path.lstrip("/")
+    body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(
+        url,
+        data=body,
+        method="POST",
+        headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
+    )
     try:
-        transcript = _transcribe_with_whisper_cpp(audio_path)
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        raw = ""
+        try:
+            raw = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            raw = ""
+        raise RuntimeError(raw.strip() or f"Vapi request failed ({getattr(e, 'code', 0)})")
     except Exception as e:
-        raise HTTPException(status_code=501, detail=f"Voice STT not available: {str(e)}")
+        raise RuntimeError(str(e))
+    try:
+        return json.loads(raw) if raw else {}
+    except Exception:
+        return {"raw": raw}
 
-    transcript = str(transcript or "").strip()
-    cid = str(claim_id or "").strip() or _extract_claim_id_from_text(transcript)
-    if not cid:
-        return {
-            "ok": True,
-            "transcript": transcript,
-            "intent": _infer_intent(transcript),
-            "needs_more_info": True,
-            "message": "Please select a claim in the dashboard and try again.",
+
+def _vapi_get_json(path: str) -> Dict[str, Any]:
+    cfg = _vapi_cfg()
+    if not cfg["api_key"]:
+        raise RuntimeError("Missing VAPI_API_KEY")
+    url = cfg["base_url"].rstrip("/") + "/" + path.lstrip("/")
+    req = urllib.request.Request(
+        url,
+        method="GET",
+        headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            raw = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        raw = ""
+        try:
+            raw = e.read().decode("utf-8", errors="replace")
+        except Exception:
+            raw = ""
+        raise RuntimeError(raw.strip() or f"Vapi request failed ({getattr(e, 'code', 0)})")
+    except Exception as e:
+        raise RuntimeError(str(e))
+    try:
+        return json.loads(raw) if raw else {}
+    except Exception:
+        return {"raw": raw}
+
+
+def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
+    t = str(text or "").strip()
+    if not t:
+        return None
+    start = t.find("{")
+    end = t.rfind("}")
+    if start < 0 or end < 0 or end <= start:
+        return None
+    blob = t[start : end + 1]
+    try:
+        obj = json.loads(blob)
+    except Exception:
+        return None
+    return obj if isinstance(obj, dict) else None
+
+
+def _coerce_bool(v: Any) -> Optional[bool]:
+    if isinstance(v, bool):
+        return v
+    if v is None:
+        return None
+    s = str(v).strip().lower()
+    if s in {"true", "yes", "y", "1"}:
+        return True
+    if s in {"false", "no", "n", "0"}:
+        return False
+    return None
+
+
+def _normalize_vapi_output(obj: Dict[str, Any]) -> Dict[str, Any]:
+    denial_reason = str(obj.get("denial_reason") or "").strip()
+    root_cause = str(obj.get("root_cause") or "").strip()
+    required_action = str(obj.get("required_action") or "").strip()
+    resub_ok = _coerce_bool(obj.get("resubmission_possible"))
+    conf = _safe_number(obj.get("confidence"))
+    if conf < 0:
+        conf = 0.0
+    if conf > 1:
+        conf = 1.0
+    return {
+        "denial_reason": denial_reason,
+        "root_cause": root_cause,
+        "required_action": required_action,
+        "resubmission_possible": bool(resub_ok) if resub_ok is not None else False,
+        "confidence": conf,
+    }
+
+
+def _find_denial_event_by_vapi_call_id(db: Session, call_id: str) -> Optional[DenialEvent]:
+    if not call_id:
+        return None
+    rows = db.query(DenialEvent).order_by(DenialEvent.created_at.desc()).limit(500).all()
+    for ev in rows:
+        meta = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+        vapi = meta.get("vapi") if isinstance(meta.get("vapi"), dict) else {}
+        if str(vapi.get("call_id") or "") == str(call_id):
+            return ev
+    return None
+
+
+def _apply_vapi_structured_output_to_denial_event(db: Session, *, ev: DenialEvent, call_id: str, report: Dict[str, Any]) -> Dict[str, Any]:
+    candidates: List[str] = []
+    summary = report.get("summary")
+    transcript = report.get("transcript")
+    if isinstance(summary, str) and summary.strip():
+        candidates.append(summary)
+    if isinstance(transcript, str) and transcript.strip():
+        candidates.append(transcript)
+
+    analysis = report.get("analysis") if isinstance(report.get("analysis"), dict) else {}
+    if isinstance(analysis.get("summary"), str) and analysis.get("summary").strip():
+        candidates.append(str(analysis.get("summary")))
+
+    artifact = report.get("artifact") if isinstance(report.get("artifact"), dict) else {}
+    msgs = artifact.get("messages")
+    if isinstance(msgs, list):
+        for m in reversed(msgs):
+            if not isinstance(m, dict):
+                continue
+            role = str(m.get("role") or "").strip().lower()
+            txt = str(m.get("message") or m.get("content") or "").strip()
+            if role == "assistant" and txt:
+                candidates.append(txt)
+
+    parsed_obj: Optional[Dict[str, Any]] = None
+    for c in candidates:
+        parsed_obj = _extract_json_object(c)
+        if parsed_obj is not None:
+            break
+
+    normalized = _normalize_vapi_output(parsed_obj or {})
+
+    meta = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+    vapi_meta = meta.get("vapi") if isinstance(meta.get("vapi"), dict) else {}
+    vapi_meta["call_id"] = call_id
+    vapi_meta["structured_output"] = normalized
+    vapi_meta["last_report"] = report
+    vapi_meta["updated_at"] = datetime.utcnow().isoformat()
+    meta["vapi"] = vapi_meta
+    ev.source_meta = meta
+
+    if normalized.get("denial_reason"):
+        ev.raw_reason_text = str(normalized.get("denial_reason") or "").strip()
+    ev.structured_reasons = [
+        {
+            "type": "vapi_call",
+            "denial_reason": normalized.get("denial_reason"),
+            "root_cause": normalized.get("root_cause"),
+            "required_action": normalized.get("required_action"),
+            "resubmission_possible": bool(normalized.get("resubmission_possible")),
+            "confidence": float(normalized.get("confidence") or 0.0),
         }
+    ]
+    db.commit()
+    return normalized
 
-    claim = db.query(Claim).filter(Claim.id == cid).first()
+
+@router.post("/denials/vapi/call")
+def vapi_start_outbound_call(payload: VapiOutboundCallIn, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    insurer_number = str(payload.insurer_number or "").strip()
+    if not insurer_number or not insurer_number.startswith("+"):
+        raise HTTPException(status_code=400, detail="insurer_number must be E.164 format (example: +14155552671)")
+
+    cfg = _vapi_cfg()
+    assistant_id = str(payload.assistant_id or "").strip() or cfg["assistant_id"]
+    phone_number_id = str(payload.phone_number_id or "").strip() or cfg["phone_number_id"]
+    if not assistant_id:
+        raise HTTPException(status_code=500, detail="Missing VAPI_ASSISTANT_ID")
+    if not phone_number_id:
+        raise HTTPException(status_code=500, detail="Missing VAPI_PHONE_NUMBER_ID")
+
+    claim = db.query(Claim).filter(Claim.id == payload.claim_id).first()
     if claim is None:
         raise HTTPException(status_code=404, detail="Claim not found")
 
     ev: Optional[DenialEvent] = None
-    if str(denial_event_id or "").strip().isdigit():
-        ev = db.query(DenialEvent).filter(DenialEvent.id == int(denial_event_id)).first()
+    if payload.denial_event_id is not None:
+        ev = db.query(DenialEvent).filter(DenialEvent.id == int(payload.denial_event_id)).first()
         if ev is not None and ev.claim_id != claim.id:
             ev = None
     if ev is None:
         ev = db.query(DenialEvent).filter(DenialEvent.claim_id == claim.id).order_by(DenialEvent.created_at.desc()).first()
-
-    intent = _infer_intent(transcript)
-    known = _has_denial_details(ev)
-
-    if mode == "provide_denial_reason" or (not known and intent in {"provide_denial_reason", "unknown"} and len(transcript) >= 12):
-        if ev is None:
-            ev = DenialEvent(claim_id=claim.id, status=str(getattr(claim, "status", "") or "denied").strip().lower() or "denied", raw_reason_text="", rejection_codes=[], structured_reasons=[])
-            db.add(ev)
-            db.commit()
-            db.refresh(ev)
-        ev.raw_reason_text = transcript
-        meta = getattr(ev, "source_meta", None) if ev is not None else None
-        meta = meta if isinstance(meta, dict) else {}
-        meta["voice"] = {"updated_at": datetime.utcnow().isoformat(), "source": "voice"}
-        ev.source_meta = meta
-        db.commit()
-        known = True
-        intent = "fix"
-
-    if intent == "summarize":
-        summary = _denial_summary(claim, ev)
-        msg = "Denial summary is available." if known else "I do not have denial details yet. Please read the denial reason."
+    if ev is not None and _has_denial_details(ev):
         return {
             "ok": True,
-            "transcript": transcript,
-            "intent": intent,
-            "claim_id": claim.id,
-            "denial_event_id": getattr(ev, "id", None),
-            "known_denial_details": known,
-            "summary": summary,
-            "needs_more_info": not known,
-            "message": msg,
-            "prompt": "Please read the denial email or describe the denial reason and any rejection codes." if not known else "",
-        }
-
-    if intent in {"fix", "resubmit"}:
-        if not known:
-            return {
-                "ok": True,
-                "transcript": transcript,
-                "intent": intent,
-                "claim_id": claim.id,
-                "denial_event_id": getattr(ev, "id", None),
-                "known_denial_details": False,
-                "needs_more_info": True,
-                "message": "I do not have enough denial details to run corrections.",
-                "prompt": "Please read the denial email or describe the denial reason and any rejection codes.",
-            }
-        if ev is None:
-            return {
-                "ok": True,
-                "transcript": transcript,
-                "intent": intent,
-                "claim_id": claim.id,
-                "known_denial_details": False,
-                "needs_more_info": True,
-                "message": "No denial event found for this claim.",
-                "prompt": "Please provide denial details first.",
-            }
-        agent = DenialManagementAgent()
-        out = agent.run_for_denial_event(db, claim_id=claim.id, denial_event_id=ev.id)
-        return {
-            "ok": True,
-            "transcript": transcript,
-            "intent": intent,
+            "skipped": True,
+            "reason": "denial_details_already_present",
             "claim_id": claim.id,
             "denial_event_id": ev.id,
-            "known_denial_details": True,
-            "needs_more_info": False,
-            "message": "Denial agent executed.",
-            "agent_run": out,
         }
+    if ev is None:
+        ev = DenialEvent(
+            claim_id=claim.id,
+            status=str(getattr(claim, "status", "") or "denied").strip().lower() or "denied",
+            raw_reason_text="",
+            rejection_codes=[],
+            structured_reasons=[],
+        )
+        db.add(ev)
+        db.commit()
+        db.refresh(ev)
+
+    variable_values = payload.variable_values if isinstance(payload.variable_values, dict) else {}
+    base_vars = {
+        "claim_id": claim.id,
+        "denial_event_id": str(ev.id),
+        "record_id": str(getattr(claim, "record_id", "") or ""),
+    }
+    merged_vars = {**base_vars, **variable_values}
+
+    call_payload: Dict[str, Any] = {
+        "assistantId": assistant_id,
+        "phoneNumberId": phone_number_id,
+        "customer": {"number": insurer_number},
+        "assistantOverrides": {"variableValues": merged_vars},
+    }
+
+    try:
+        created = _vapi_post_json("/call", call_payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    call_id = str((created or {}).get("id") or "").strip()
+    meta = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+    meta["vapi"] = {
+        "call_id": call_id,
+        "insurer_number": insurer_number,
+        "assistant_id": assistant_id,
+        "phone_number_id": phone_number_id,
+        "requested_at": datetime.utcnow().isoformat(),
+        "call_create_response": created,
+    }
+    ev.source_meta = meta
+    db.commit()
 
     return {
         "ok": True,
-        "transcript": transcript,
-        "intent": intent,
         "claim_id": claim.id,
-        "denial_event_id": getattr(ev, "id", None),
-        "known_denial_details": known,
-        "needs_more_info": True,
-        "message": "I did not understand the command. Say 'summarize denial', 'fix denial', or read the denial reason.",
-        "prompt": "Try: 'Summarize the denial' or 'Fix and resubmit this claim'.",
+        "denial_event_id": ev.id,
+        "call_id": call_id,
+        "status": str((created or {}).get("status") or ""),
+        "monitor": (created or {}).get("monitor") if isinstance((created or {}).get("monitor"), dict) else {},
     }
 
 
-@router.post("/denials/voice/speak")
-def denial_voice_speak(payload: Dict[str, Any]) -> Response:
-    text = str((payload or {}).get("text") or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Missing text")
+@router.post("/denials/vapi/sync")
+def vapi_sync_call(payload: Dict[str, Any], db: Session = Depends(get_db)) -> Dict[str, Any]:
+    call_id = str((payload or {}).get("call_id") or "").strip()
+    if not call_id:
+        raise HTTPException(status_code=400, detail="Missing call_id")
+
     try:
-        wav = _speak_with_piper(text)
+        call_obj = _vapi_get_json(f"/call/{call_id}")
     except Exception as e:
-        raise HTTPException(status_code=501, detail=f"Voice TTS not available: {str(e)}")
-    return Response(content=wav, media_type="audio/wav")
+        raise HTTPException(status_code=502, detail=str(e))
+
+    ev = _find_denial_event_by_vapi_call_id(db, call_id)
+    claim_id = str((payload or {}).get("claim_id") or "").strip()
+    denial_event_id = (payload or {}).get("denial_event_id")
+    if ev is None and claim_id:
+        claim = db.query(Claim).filter(Claim.id == claim_id).first()
+        if claim is not None:
+            if isinstance(denial_event_id, int):
+                ev = db.query(DenialEvent).filter(DenialEvent.id == int(denial_event_id)).first()
+                if ev is not None and ev.claim_id != claim.id:
+                    ev = None
+            if ev is None:
+                ev = db.query(DenialEvent).filter(DenialEvent.claim_id == claim.id).order_by(DenialEvent.created_at.desc()).first()
+
+    if ev is None:
+        return {"ok": True, "synced": False, "reason": "no_matching_denial_event", "call_id": call_id, "call": call_obj}
+
+    meta = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+    vapi_meta = meta.get("vapi") if isinstance(meta.get("vapi"), dict) else {}
+    vapi_meta["synced_at"] = datetime.utcnow().isoformat()
+    vapi_meta["call_get_response"] = call_obj
+    meta["vapi"] = vapi_meta
+    ev.source_meta = meta
+    db.commit()
+
+    status = str((call_obj or {}).get("status") or "").strip().lower()
+    if status and status not in {"ended", "completed", "finished"}:
+        return {"ok": True, "synced": True, "call_id": call_id, "status": status, "stored": False}
+
+    normalized = _apply_vapi_structured_output_to_denial_event(db, ev=ev, call_id=call_id, report=call_obj)
+
+    ran_agent = False
+    agent_out: Optional[Dict[str, Any]] = None
+    if _has_denial_details(ev):
+        try:
+            agent = DenialManagementAgent()
+            agent_out = agent.run_for_denial_event(db, claim_id=ev.claim_id, denial_event_id=ev.id)
+            ran_agent = True
+        except Exception as e:
+            meta2 = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+            vapi2 = meta2.get("vapi") if isinstance(meta2.get("vapi"), dict) else {}
+            vapi2["agent_error"] = str(e)
+            meta2["vapi"] = vapi2
+            ev.source_meta = meta2
+            db.commit()
+
+    if ran_agent:
+        meta3 = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+        vapi3 = meta3.get("vapi") if isinstance(meta3.get("vapi"), dict) else {}
+        vapi3["agent_run"] = agent_out
+        meta3["vapi"] = vapi3
+        ev.source_meta = meta3
+        db.commit()
+
+    return {
+        "ok": True,
+        "synced": True,
+        "call_id": call_id,
+        "stored": True,
+        "claim_id": ev.claim_id,
+        "denial_event_id": ev.id,
+        "structured_output": normalized,
+        "ran_agent": ran_agent,
+    }
+
+
+@router.post("/denials/vapi/webhook")
+async def vapi_webhook(request: Request, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid JSON")
+
+    message = payload.get("message") if isinstance(payload, dict) else None
+    message = message if isinstance(message, dict) else {}
+    msg_type = str(message.get("type") or "").strip()
+
+    if msg_type != "end-of-call-report":
+        return {"ok": True, "ignored": True, "type": msg_type}
+
+    call = message.get("call") if isinstance(message.get("call"), dict) else {}
+    call_id = str(call.get("id") or "").strip()
+    ev = _find_denial_event_by_vapi_call_id(db, call_id)
+
+    if ev is None:
+        transcript = str(message.get("transcript") or "").strip()
+        claim_id = _extract_claim_id_from_text(transcript)
+        if claim_id:
+            claim = db.query(Claim).filter(Claim.id == claim_id).first()
+            if claim is not None:
+                ev = db.query(DenialEvent).filter(DenialEvent.claim_id == claim.id).order_by(DenialEvent.created_at.desc()).first()
+
+    if ev is None:
+        return {"ok": True, "stored": False, "reason": "no_matching_denial_event", "call_id": call_id}
+
+    normalized = _apply_vapi_structured_output_to_denial_event(db, ev=ev, call_id=call_id, report=message)
+
+    ran_agent = False
+    agent_out: Optional[Dict[str, Any]] = None
+    if _has_denial_details(ev):
+        try:
+            agent = DenialManagementAgent()
+            agent_out = agent.run_for_denial_event(db, claim_id=ev.claim_id, denial_event_id=ev.id)
+            ran_agent = True
+        except Exception as e:
+            meta2 = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+            vapi2 = meta2.get("vapi") if isinstance(meta2.get("vapi"), dict) else {}
+            vapi2["agent_error"] = str(e)
+            meta2["vapi"] = vapi2
+            ev.source_meta = meta2
+            db.commit()
+
+    if ran_agent:
+        meta3 = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+        vapi3 = meta3.get("vapi") if isinstance(meta3.get("vapi"), dict) else {}
+        vapi3["agent_run"] = agent_out
+        meta3["vapi"] = vapi3
+        ev.source_meta = meta3
+        db.commit()
+
+    return {"ok": True, "stored": True, "call_id": call_id, "claim_id": ev.claim_id, "denial_event_id": ev.id, "ran_agent": ran_agent}
