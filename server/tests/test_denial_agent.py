@@ -169,3 +169,12 @@ def test_denial_dashboard_endpoint(client):
     assert "denied_claims" in payload
     assert isinstance(payload["denied_claims"], list)
     assert any(str(r.get("claim_id") or "") == claim_id for r in payload["denied_claims"] if isinstance(r, dict))
+
+
+def test_denial_email_parse_endpoint(client):
+    text = "Subject: Claim Denied\n\nClaim ID: ABCD-123456\nRejection Code: MD01\nReason: Missing discharge summary."
+    res = client.post("/denials/email/parse", json={"text": text})
+    assert res.status_code == 200
+    payload = res.json()
+    assert str(payload.get("claim_id") or "") == "ABCD-123456"
+    assert "MD01" in (payload.get("rejection_codes") or [])

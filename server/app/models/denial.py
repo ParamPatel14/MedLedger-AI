@@ -33,6 +33,7 @@ class DenialEvent(Base):
     rejection_codes: Mapped[list] = mapped_column(JSON, default=list)
 
     structured_reasons: Mapped[list] = mapped_column(JSON, default=list)
+    source_meta: Mapped[dict] = mapped_column(JSON, default=dict)
 
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
@@ -81,4 +82,3 @@ class LearningLog(Base):
 
     meta: Mapped[dict] = mapped_column(JSON, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
-

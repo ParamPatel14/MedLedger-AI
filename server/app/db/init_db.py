@@ -35,5 +35,14 @@ def init_db() -> None:
                             conn.execute(text("UPDATE records SET timestamp = created_at WHERE timestamp IS NULL"))
                         except Exception:
                             pass
+        if "denial_events" in set(insp.get_table_names()):
+            cols = {c.get("name") for c in insp.get_columns("denial_events")}
+            if "source_meta" not in cols:
+                with engine.begin() as conn:
+                    dialect = engine.dialect.name
+                    if dialect == "postgresql":
+                        conn.execute(text("ALTER TABLE denial_events ADD COLUMN IF NOT EXISTS source_meta JSONB DEFAULT '{}'::jsonb"))
+                    else:
+                        conn.execute(text("ALTER TABLE denial_events ADD COLUMN source_meta TEXT"))
     except Exception:
         return

@@ -53,6 +53,7 @@ def _default_path(env_key: str, filename: str) -> Path:
 _MAPPINGS_CACHE: Optional[DenialConfigStore] = None
 _THRESHOLDS_CACHE: Optional[DenialConfigStore] = None
 _RULES_CACHE: Optional[DenialConfigStore] = None
+_EMAIL_CACHE: Optional[DenialConfigStore] = None
 
 
 def _load_cached(path: Path, previous: Optional[DenialConfigStore]) -> Tuple[DenialConfigStore, Dict[str, Any]]:
@@ -91,3 +92,10 @@ def get_denial_rules() -> Dict[str, Any]:
     _RULES_CACHE = store
     return cfg
 
+
+def get_denial_email() -> Dict[str, Any]:
+    global _EMAIL_CACHE
+    path = _default_path("DENIAL_EMAIL_PATH", "denial_email.json")
+    store, cfg = _load_cached(path, _EMAIL_CACHE)
+    _EMAIL_CACHE = store
+    return cfg

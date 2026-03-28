@@ -37,3 +37,14 @@ class DenialAgentRunOut(BaseModel):
 class ClaimOutcomeIn(BaseModel):
     claim_id: str
     outcome_status: str
+
+
+class DenialEmailParseIn(BaseModel):
+    text: str
+
+
+class DenialGmailPullIn(BaseModel):
+    query: Optional[str] = None
+    label_ids: List[str] = Field(default_factory=list)
+    max_results: int = 10
+    run_agent: bool = False

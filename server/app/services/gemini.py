@@ -165,3 +165,73 @@ def indian_payer_rules_fallback(raw_text: str, diagnoses: List[str], procedures:
             cleaned.append({"type": t, "severity": sev, "message": msg, "source": "gemini"})
     return {"issues": cleaned}
 
+
+def understand_denial_email(raw_text: str) -> Optional[Dict[str, Any]]:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        return None
+    try:
+        import google.generativeai as genai
+    except Exception:
+        return None
+
+    text = str(raw_text or "").strip()
+    if not text:
+        return None
+
+    genai.configure(api_key=api_key)
+    model_name = os.getenv("GEMINI_MODEL") or "gemini-2.5-flash"
+    model = genai.GenerativeModel(model_name)
+
+    prompt = (
+        "You are a denial management assistant. Extract denial details from the email content.\n"
+        "Return ONLY strict JSON with keys:\n"
+        "claim_id (string or null), rejection_codes (array of strings), denial_summary (string), denial_types (array of strings), confidence (number 0..1).\n"
+        "Do not include markdown and do not include any other keys.\n\n"
+        f"EMAIL_TEXT:\n{text}\n"
+    )
+    try:
+        resp = model.generate_content(prompt)
+        raw = getattr(resp, "text", "") or ""
+    except Exception:
+        return None
+
+    obj = _extract_json_object(raw)
+    if not obj or not isinstance(obj, dict):
+        return None
+
+    claim_id = obj.get("claim_id")
+    claim_id = str(claim_id).strip() if claim_id is not None and str(claim_id).strip() else None
+    rejection_codes = obj.get("rejection_codes")
+    if not isinstance(rejection_codes, list):
+        rejection_codes = []
+    cleaned_codes: List[str] = []
+    for c in rejection_codes:
+        s = str(c or "").strip()
+        if s:
+            cleaned_codes.append(s)
+
+    denial_summary = str(obj.get("denial_summary") or "").strip()
+    denial_types = obj.get("denial_types")
+    if not isinstance(denial_types, list):
+        denial_types = []
+    cleaned_types: List[str] = []
+    for t in denial_types:
+        s = str(t or "").strip()
+        if s:
+            cleaned_types.append(s)
+
+    try:
+        conf = float(obj.get("confidence") or 0.0)
+    except Exception:
+        conf = 0.0
+    conf = max(0.0, min(1.0, conf))
+
+    return {
+        "claim_id": claim_id,
+        "rejection_codes": cleaned_codes,
+        "denial_summary": denial_summary,
+        "denial_types": cleaned_types,
+        "confidence": conf,
+    }
+

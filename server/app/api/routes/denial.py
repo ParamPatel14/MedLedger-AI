@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.layers.denial_layer.config import get_denial_thresholds
+from app.layers.denial_layer.email_ingestion import DenialEmailIngestionService, DenialEmailParser
 from app.layers.denial_layer.service import DenialManagementAgent
 from app.models.denial import Claim, CorrectionApplied, DenialEvent, Resubmission
 from app.schemas.denial import (
@@ -16,6 +17,8 @@ from app.schemas.denial import (
     ClaimOut,
     ClaimOutcomeIn,
     ClaimStatusUpdateIn,
+    DenialEmailParseIn,
+    DenialGmailPullIn,
     DenialAgentRunOut,
 )
 
@@ -262,3 +265,22 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
         },
         "denied_claims": rows,
     }
+
+
+@router.post("/denials/email/parse")
+def parse_denial_email(payload: DenialEmailParseIn) -> Dict[str, Any]:
+    parser = DenialEmailParser.from_default()
+    parsed = parser.parse_text(text=str(payload.text or ""), meta={"source": "manual"})
+    return {"claim_id": parsed.claim_id, "rejection_codes": parsed.rejection_codes, "raw_reason_text": parsed.raw_reason_text, "meta": parsed.meta}
+
+
+@router.post("/denials/gmail/pull")
+def pull_denial_emails(payload: DenialGmailPullIn, db: Session = Depends(get_db)) -> Dict[str, Any]:
+    svc = DenialEmailIngestionService()
+    return svc.ingest_gmail(
+        db,
+        query=payload.query,
+        label_ids=payload.label_ids,
+        max_results=int(payload.max_results or 10),
+        run_agent=bool(payload.run_agent),
+    )
