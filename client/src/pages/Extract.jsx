@@ -1,7 +1,4 @@
 import ClinicalExtractorPanel from '../components/ClinicalExtractorPanel'
-import AgentWorkflowPanel from '../components/AgentWorkflowPanel'
-import ClaimExplanationPanel from '../components/ClaimExplanationPanel'
-import TermCatalogPanel from '../components/TermCatalogPanel'
 import '../App.css'
 
 export default function Extract() {
@@ -9,15 +6,12 @@ export default function Extract() {
     <div className="container">
       <section className="section">
         <div className="sectionHeader">
-          <h2 className="sectionTitle">Clinical Extraction</h2>
+          <h2 className="sectionTitle">Claim Processing</h2>
           <p className="sectionSubtitle">
-            Upload documents or prescriptions, or paste text to extract diagnoses, procedures, and medications.
+            Upload a record or paste text to extract structured data and ICD-10 codes.
           </p>
         </div>
         <ClinicalExtractorPanel />
-        <AgentWorkflowPanel />
-        <ClaimExplanationPanel />
-        <TermCatalogPanel />
       </section>
     </div>
   )

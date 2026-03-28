@@ -203,6 +203,7 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
     denied_claims_count = 0
     recovered_claims = 0
     revenue_recovered = 0.0
+    automated_claims = 0
 
     rows: List[Dict[str, Any]] = []
     for claim in claims:
@@ -230,6 +231,8 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
         progress = _progress_from_state(claim, denials=denials_count, corrections=len(corrections), resubmits=len(resubs))
 
         if denials_count > 0 or status in watched_statuses:
+            if denials_count > 0 and (len(corrections) > 0 or len(resubs) > 0):
+                automated_claims += 1
             denial_types: List[str] = []
             if last_denial is not None and isinstance(getattr(last_denial, "structured_reasons", None), list):
                 denial_types = [str(x.get("type") or "").strip() for x in (last_denial.structured_reasons or []) if isinstance(x, dict)]
@@ -255,6 +258,8 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
             )
 
     recovered_pct = float(recovered_claims / max(1, denied_claims_count) * 100.0) if denied_claims_count else 0.0
+    denial_rate_pct = float(denied_claims_count / max(1, total_claims) * 100.0) if total_claims else 0.0
+    automation_pct = float(automated_claims / max(1, denied_claims_count) * 100.0) if denied_claims_count else 0.0
 
     return {
         "metrics": {
@@ -263,6 +268,9 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
             "recovered_claims": recovered_claims,
             "recovered_percent": recovered_pct,
             "revenue_recovered": revenue_recovered,
+            "denial_rate_percent": denial_rate_pct,
+            "denial_reduction_percent": recovered_pct,
+            "automation_percent": automation_pct,
         },
         "denied_claims": rows,
     }

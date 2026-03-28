@@ -100,11 +100,14 @@ function renderTags(items, className) {
   )
 }
 
-export default function AgentWorkflowPanel() {
+export default function AgentWorkflowPanel({ view = 'full' }) {
   const [text, setText] = useState('')
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
   const [result, setResult] = useState(null)
+
+  const showOutputs = view === 'full' || view === 'flow'
+  const showVerification = view === 'full' || view === 'verification'
 
   const flow = useMemo(() => {
     const f = result?.flow
@@ -449,139 +452,142 @@ export default function AgentWorkflowPanel() {
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-2">
-            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Guardrail Panel
-                </div>
-                <span className="text-[11px] text-slate-500">
-                  Triggered: {policyTriggered.length + guardrailDetectors.length}
-                </span>
-              </div>
-              <div className="mt-2">
-                <div className="text-[11px] font-semibold text-slate-600">
-                  Policies triggered
+          {showVerification ? (
+            <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Guardrail Panel
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Triggered: {policyTriggered.length + guardrailDetectors.length}
+                  </span>
                 </div>
                 <div className="mt-2">
-                  {renderTags(policyTriggered, 'bg-white text-slate-700 border-slate-200')}
+                  <div className="text-[11px] font-semibold text-slate-600">
+                    Policies triggered
+                  </div>
+                  <div className="mt-2">
+                    {renderTags(policyTriggered, 'bg-white text-slate-700 border-slate-200')}
+                  </div>
+                </div>
+                <div className="mt-3">
+                  <div className="text-[11px] font-semibold text-slate-600">
+                    Edge detectors
+                  </div>
+                  <div className="mt-2">
+                    {renderTags(guardrailDetectors, 'bg-white text-slate-700 border-slate-200')}
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                  <span className={`rounded-full border px-2 py-0.5 ${severityColor('critical')}`}>
+                    critical {govCounts.critical}
+                  </span>
+                  <span className={`rounded-full border px-2 py-0.5 ${severityColor('error')}`}>
+                    error {govCounts.error}
+                  </span>
+                  <span className={`rounded-full border px-2 py-0.5 ${severityColor('warning')}`}>
+                    warning {govCounts.warning}
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <div className="text-[11px] font-semibold text-slate-600">
+                    Violations
+                  </div>
+                  {governanceIssues.length ? (
+                    <div className="mt-2 space-y-2">
+                      {governanceIssues.slice(0, 8).map((issue, i) => (
+                        <div
+                          key={`${issue?.policy_id || issue?.detector_id || issue?.type || 'issue'}-${i}`}
+                          className={`rounded-lg border px-3 py-2 text-xs ${severityColor(issue?.severity)}`}
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className="font-semibold">
+                              {String(issue?.type || 'issue')}
+                            </span>
+                            <span className="text-[11px]">
+                              {String(issue?.severity || 'warning')}
+                            </span>
+                          </div>
+                          <div className="mt-1">{String(issue?.message || '')}</div>
+                          {(issue?.policy_id || issue?.detector_id) && (
+                            <div className="mt-2 text-[11px] text-slate-600">
+                              {issue?.policy_id ? `policy: ${String(issue.policy_id)}` : ''}
+                              {issue?.policy_id && issue?.detector_id ? ' • ' : ''}
+                              {issue?.detector_id ? `detector: ${String(issue.detector_id)}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-xs text-slate-400">No violations</div>
+                  )}
                 </div>
               </div>
-              <div className="mt-3">
-                <div className="text-[11px] font-semibold text-slate-600">
-                  Edge detectors
+
+              <div className="rounded-lg border border-slate-200 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Alert System
+                  </div>
+                  <span className="text-[11px] text-slate-500">
+                    Alerts: {alertItems.length}
+                  </span>
                 </div>
-                <div className="mt-2">
-                  {renderTags(guardrailDetectors, 'bg-white text-slate-700 border-slate-200')}
-                </div>
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                <span className={`rounded-full border px-2 py-0.5 ${severityColor('critical')}`}>
-                  critical {govCounts.critical}
-                </span>
-                <span className={`rounded-full border px-2 py-0.5 ${severityColor('error')}`}>
-                  error {govCounts.error}
-                </span>
-                <span className={`rounded-full border px-2 py-0.5 ${severityColor('warning')}`}>
-                  warning {govCounts.warning}
-                </span>
-              </div>
-              <div className="mt-3">
-                <div className="text-[11px] font-semibold text-slate-600">
-                  Violations
-                </div>
-                {governanceIssues.length ? (
-                  <div className="mt-2 space-y-2">
-                    {governanceIssues.slice(0, 8).map((issue, i) => (
+                {alertItems.length ? (
+                  <div className="mt-3 space-y-2">
+                    {alertItems.slice(0, 10).map((a, i) => (
                       <div
-                        key={`${issue?.policy_id || issue?.detector_id || issue?.type || 'issue'}-${i}`}
-                        className={`rounded-lg border px-3 py-2 text-xs ${severityColor(issue?.severity)}`}
+                        key={`${a.kind}-${i}`}
+                        className={`rounded-lg border px-3 py-2 text-xs ${severityColor(a.severity)}`}
                       >
                         <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-semibold">
-                            {String(issue?.type || 'issue')}
-                          </span>
-                          <span className="text-[11px]">
-                            {String(issue?.severity || 'warning')}
-                          </span>
+                          <span className="font-semibold">{String(a.title)}</span>
+                          <span className="text-[11px]">{String(a.severity)}</span>
                         </div>
-                        <div className="mt-1">{String(issue?.message || '')}</div>
-                        {(issue?.policy_id || issue?.detector_id) && (
-                          <div className="mt-2 text-[11px] text-slate-600">
-                            {issue?.policy_id ? `policy: ${String(issue.policy_id)}` : ''}
-                            {issue?.policy_id && issue?.detector_id ? ' • ' : ''}
-                            {issue?.detector_id ? `detector: ${String(issue.detector_id)}` : ''}
-                          </div>
-                        )}
+                        <div className="mt-1">{String(a.message)}</div>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <div className="mt-2 text-xs text-slate-400">No violations</div>
+                  <div className="mt-3 text-xs text-slate-400">No alerts</div>
                 )}
-              </div>
-            </div>
 
-            <div className="rounded-lg border border-slate-200 bg-white p-3">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Alert System
-                </div>
-                <span className="text-[11px] text-slate-500">
-                  Alerts: {alertItems.length}
-                </span>
-              </div>
-              {alertItems.length ? (
-                <div className="mt-3 space-y-2">
-                  {alertItems.slice(0, 10).map((a, i) => (
-                    <div
-                      key={`${a.kind}-${i}`}
-                      className={`rounded-lg border px-3 py-2 text-xs ${severityColor(a.severity)}`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-semibold">{String(a.title)}</span>
-                        <span className="text-[11px]">{String(a.severity)}</span>
-                      </div>
-                      <div className="mt-1">{String(a.message)}</div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="mt-3 text-xs text-slate-400">No alerts</div>
-              )}
-
-              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                  Decision Timeline
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  {[
-                    'Clinical',
-                    'Coding',
-                    'SVM',
-                    'Policy',
-                    'Decision',
-                  ].map((label, idx, arr) => (
-                    <div key={label} className="flex items-center gap-2">
-                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                        {label}
-                      </span>
-                      {idx < arr.length - 1 && (
-                        <span className="text-slate-300" aria-hidden="true">
-                          →
+                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    Decision Timeline
+                  </div>
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    {[
+                      'Clinical',
+                      'Coding',
+                      'SVM',
+                      'Policy',
+                      'Decision',
+                    ].map((label, idx, arr) => (
+                      <div key={label} className="flex items-center gap-2">
+                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                          {label}
                         </span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-3 text-xs text-slate-600">
-                  Clinical → SVM → Coding → SVM → Rule → SVM → Policy → Decision
+                        {idx < arr.length - 1 && (
+                          <span className="text-slate-300" aria-hidden="true">
+                            →
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 text-xs text-slate-600">
+                    Clinical → SVM → Coding → SVM → Rule → SVM → Policy → Decision
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          ) : null}
 
-          <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          {showVerification ? (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Validation Status
@@ -621,9 +627,11 @@ export default function AgentWorkflowPanel() {
             ) : (
               <div className="mt-3 text-xs text-slate-400">No issues</div>
             )}
-          </div>
+            </div>
+          ) : null}
 
-          <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+          {showVerification ? (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
             <div className="flex items-center justify-between gap-3">
               <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
                 Semantic Verification (SVM)
@@ -751,11 +759,12 @@ export default function AgentWorkflowPanel() {
                 No SVM results
               </div>
             )}
-          </div>
+            </div>
+          ) : null}
         </div>
       </div>
 
-      {result && (
+      {result && showOutputs && (
         <div className="mt-4 grid gap-3 lg:grid-cols-3">
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex items-center justify-between gap-3">

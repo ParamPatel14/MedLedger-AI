@@ -129,6 +129,18 @@
         "params": { "message": "governance.refusal.message" },
         "confidence_path": "governance.confidence"
       }
+    },
+    {
+      "id": "policy_issues",
+      "enabled": true,
+      "type": "policy",
+      "when": { "kind": "path_len_gte", "path": "governance.issues[*]", "value": 1 },
+      "emit": {
+        "template_id": "policy.issue",
+        "items_path": "governance.issues[*]",
+        "params": { "issue_type": "item.type", "severity": "item.severity", "message": "item.message" },
+        "confidence_path": "governance.confidence"
+      }
     }
   ]
 }

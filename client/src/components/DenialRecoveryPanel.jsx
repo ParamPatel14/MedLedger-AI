@@ -117,23 +117,36 @@ export default function DenialRecoveryPanel() {
         <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">{error}</div>
       )}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Recovered Claims</div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900">{Number(metrics.recovered_claims || 0)}</div>
-          <div className="mt-1 text-xs text-slate-500">
-            {Number(metrics.denied_claims || 0)} denied · {Number(metrics.recovered_percent || 0).toFixed(1)}% recovered
-          </div>
-        </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
           <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Revenue Recovered</div>
           <div className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(metrics.revenue_recovered || 0)}</div>
-          <div className="mt-1 text-xs text-slate-500">Sum of approved previously-denied claims</div>
+          <div className="mt-1 text-xs text-slate-500">₹ recovered from previously-denied claims</div>
         </div>
         <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Denied Claims</div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900">{Number(metrics.denied_claims || 0)}</div>
-          <div className="mt-1 text-xs text-slate-500">{Number(metrics.total_claims || 0)} total claims tracked</div>
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Denial Reduction</div>
+          <div className="mt-2 text-2xl font-semibold text-slate-900">
+            {Number(metrics.denial_reduction_percent ?? metrics.recovered_percent ?? 0).toFixed(1)}%
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            {Number(metrics.recovered_claims || 0)} recovered · {Number(metrics.denied_claims || 0)} denied
+          </div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Automation</div>
+          <div className="mt-2 text-2xl font-semibold text-slate-900">
+            {Number(metrics.automation_percent || 0).toFixed(1)}%
+          </div>
+          <div className="mt-1 text-xs text-slate-500">Denied claims with auto correction/resubmission</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Denial Rate</div>
+          <div className="mt-2 text-2xl font-semibold text-slate-900">
+            {Number(metrics.denial_rate_percent || 0).toFixed(1)}%
+          </div>
+          <div className="mt-1 text-xs text-slate-500">
+            {Number(metrics.denied_claims || 0)} denied · {Number(metrics.total_claims || 0)} total
+          </div>
         </div>
       </div>
 

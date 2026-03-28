@@ -168,6 +168,11 @@ def test_denial_dashboard_endpoint(client):
     assert "metrics" in payload
     assert "denied_claims" in payload
     assert isinstance(payload["denied_claims"], list)
+    metrics = payload["metrics"]
+    assert "revenue_recovered" in metrics
+    assert "denial_rate_percent" in metrics
+    assert "denial_reduction_percent" in metrics
+    assert "automation_percent" in metrics
     assert any(str(r.get("claim_id") or "") == claim_id for r in payload["denied_claims"] if isinstance(r, dict))
 
 

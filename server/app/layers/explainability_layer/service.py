@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from typing import Any, Dict, List
-
 from sqlalchemy.orm import Session
-
 from app.layers.explainability_layer.explanation_engine import DecisionExplanationEngine
 from app.layers.explainability_layer.trace_engine import DecisionTraceEngine
 from app.layers.svm_layer.service import SvmMiddleware
@@ -176,7 +174,7 @@ class ExplainabilityService:
             "decision": decision,
             "confidence": float(conf),
             "explanations": [
-                {"type": e.type, "explanation": e.explanation, "confidence": float(e.confidence)}
+                {"type": e.type, "explanation": e.explanation, "confidence": float(e.confidence), "details": e.meta}
                 for e in explanations
                 if str(e.explanation or "").strip() and e.type != "svm_verification"
             ],

@@ -88,6 +88,7 @@ class ExplanationOut(BaseModel):
     type: str
     explanation: str
     confidence: float
+    details: Dict[str, Any] = Field(default_factory=dict)
 
 
 class DecisionTraceStepOut(BaseModel):

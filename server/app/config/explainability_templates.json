@@ -40,6 +40,10 @@
     "denial.refusal": {
       "enabled": true,
       "template": "Request blocked because {message}"
+    },
+    "policy.issue": {
+      "enabled": true,
+      "template": "Policy/guardrail issue '{issue_type}' severity={severity}: {message}"
     }
   }
 }

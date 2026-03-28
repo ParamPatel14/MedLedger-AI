@@ -16,6 +16,53 @@ function decisionColor(decision) {
   return 'bg-slate-50 text-slate-700 border-slate-200'
 }
 
+function typeTitle(type) {
+  const t = String(type || '').toLowerCase()
+  if (t === 'clinical') return 'Diagnosis Reasoning'
+  if (t === 'coding') return 'Code Assignment Logic'
+  if (t === 'rule') return 'Rule Validation'
+  if (t === 'policy') return 'Policy / Guardrails'
+  if (t === 'svm') return 'Verification (Stages)'
+  if (t === 'svm_verification') return 'Verification (Overall)'
+  if (t === 'decision') return 'Decision'
+  if (t === 'denial') return 'Denial / Refusal'
+  return `Other (${t || 'unknown'})`
+}
+
+function ExplanationItem({ item }) {
+  const [open, setOpen] = useState(false)
+  const details = item?.details && typeof item.details === 'object' ? item.details : null
+  return (
+    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-xs font-semibold text-slate-700">
+          Confidence {formatScore(item?.confidence)}
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] text-slate-500">{String(item?.type || '')}</span>
+          {details ? (
+            <button
+              type="button"
+              className="text-[11px] text-sky-700 underline"
+              onClick={() => setOpen((v) => !v)}
+            >
+              {open ? 'Hide details' : 'Show details'}
+            </button>
+          ) : null}
+        </div>
+      </div>
+      <div className="mt-1 text-sm text-slate-800">
+        {String(item?.explanation || '')}
+      </div>
+      {open && details ? (
+        <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700">
+          {JSON.stringify(details, null, 2)}
+        </pre>
+      ) : null}
+    </div>
+  )
+}
+
 function ExplanationList({ items }) {
   const list = Array.isArray(items) ? items : []
   if (!list.length) {
@@ -23,22 +70,7 @@ function ExplanationList({ items }) {
   }
   return (
     <div className="space-y-2">
-      {list.map((x, i) => (
-        <div
-          key={`${x?.type || 'exp'}-${i}`}
-          className="rounded-lg border border-slate-200 bg-white px-3 py-2"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-xs font-semibold text-slate-700">
-              Confidence {formatScore(x?.confidence)}
-            </div>
-            <span className="text-[11px] text-slate-500">{String(x?.type || '')}</span>
-          </div>
-          <div className="mt-1 text-sm text-slate-800">
-            {String(x?.explanation || '')}
-          </div>
-        </div>
-      ))}
+      {list.map((x, i) => <ExplanationItem key={`${x?.type || 'exp'}-${i}`} item={x} />)}
     </div>
   )
 }
@@ -54,12 +86,41 @@ export default function ClaimExplanationPanel() {
 
   const grouped = useMemo(() => {
     const exps = Array.isArray(result?.explanations) ? result.explanations : []
-    return {
-      clinical: exps.filter((x) => String(x?.type || '') === 'clinical'),
-      coding: exps.filter((x) => String(x?.type || '') === 'coding'),
-      rule: exps.filter((x) => String(x?.type || '') === 'rule'),
+    const buckets = {}
+    for (const x of exps) {
+      const t = String(x?.type || '').toLowerCase()
+      if (!t) continue
+      if (!buckets[t]) buckets[t] = []
+      buckets[t].push(x)
     }
+    return buckets
   }, [result])
+
+  const otherExplanations = useMemo(() => {
+    const exps = Array.isArray(result?.explanations) ? result.explanations : []
+    const keep = new Set(['clinical', 'coding', 'rule'])
+    return exps.filter((x) => !keep.has(String(x?.type || '').toLowerCase()))
+  }, [result])
+
+  const otherByType = useMemo(() => {
+    const buckets = {}
+    for (const x of otherExplanations) {
+      const t = String(x?.type || '').toLowerCase() || 'other'
+      if (!buckets[t]) buckets[t] = []
+      buckets[t].push(x)
+    }
+    const order = ['policy', 'svm_verification', 'svm', 'decision', 'denial', 'other']
+    const keys = Object.keys(buckets)
+    keys.sort((a, b) => {
+      const ia = order.indexOf(a)
+      const ib = order.indexOf(b)
+      if (ia === -1 && ib === -1) return a.localeCompare(b)
+      if (ia === -1) return 1
+      if (ib === -1) return -1
+      return ia - ib
+    })
+    return { buckets, keys }
+  }, [otherExplanations])
 
   const traceSteps = useMemo(() => {
     const steps = result?.trace?.steps
@@ -216,7 +277,7 @@ export default function ClaimExplanationPanel() {
             Diagnosis Reasoning
           </div>
           <div className="mt-3">
-            <ExplanationList items={grouped.clinical} />
+            <ExplanationList items={grouped.clinical || []} />
           </div>
         </div>
 
@@ -225,7 +286,7 @@ export default function ClaimExplanationPanel() {
             Code Assignment Logic
           </div>
           <div className="mt-3">
-            <ExplanationList items={grouped.coding} />
+            <ExplanationList items={grouped.coding || []} />
           </div>
         </div>
 
@@ -234,10 +295,30 @@ export default function ClaimExplanationPanel() {
             Rule Validation
           </div>
           <div className="mt-3">
-            <ExplanationList items={grouped.rule} />
+            <ExplanationList items={grouped.rule || []} />
           </div>
         </div>
       </div>
+
+      {otherExplanations.length ? (
+        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+            Additional Explanation Types
+          </div>
+          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+            {otherByType.keys.map((k) => (
+              <div key={k} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  {typeTitle(k)}
+                </div>
+                <div className="mt-3">
+                  <ExplanationList items={otherByType.buckets[k]} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {audit ? (
         <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
@@ -252,4 +333,3 @@ export default function ClaimExplanationPanel() {
     </div>
   )
 }
-
