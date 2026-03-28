@@ -1,0 +1,111 @@
+{
+  "version": "1.0",
+  "root_cause_rules": [
+    {
+      "id": "rc_missing_document",
+      "category": "missing_document",
+      "root_cause": "Missing required document/attachment",
+      "confidence": 0.75,
+      "when": { "kind": "issue_type_in", "values": ["missing_document"] }
+    },
+    {
+      "id": "rc_invalid_code",
+      "category": "invalid_code",
+      "root_cause": "Invalid or unsupported coding",
+      "confidence": 0.75,
+      "when": { "kind": "issue_type_in", "values": ["invalid_code"] }
+    },
+    {
+      "id": "rc_policy_violation",
+      "category": "policy_violation",
+      "root_cause": "Payer policy conflict or missing support",
+      "confidence": 0.7,
+      "when": { "kind": "issue_type_in", "values": ["policy_violation"] }
+    },
+    {
+      "id": "rc_financial_issue",
+      "category": "financial_issue",
+      "root_cause": "Financial/billing mismatch",
+      "confidence": 0.7,
+      "when": { "kind": "issue_type_in", "values": ["financial_issue"] }
+    }
+  ],
+  "conflict_policy": {
+    "mode": "escalate",
+    "conflict_fields": ["claim.claim_data.billing.amount", "claim.claim_data.codes"]
+  },
+  "strategies": [
+    {
+      "id": "attach_missing_docs",
+      "category": "missing_document",
+      "base_confidence": 0.7,
+      "when": { "kind": "issue_type_in", "values": ["missing_document"] },
+      "actions": [
+        {
+          "kind": "attach_document",
+          "doc_type": "discharge_summary",
+          "available_path": "claim.claim_data.available_documents[*]",
+          "attachments_path": "claim.claim_data.attachments"
+        }
+      ]
+    },
+    {
+      "id": "rerun_coding_for_invalid_code",
+      "category": "invalid_code",
+      "base_confidence": 0.7,
+      "when": { "kind": "issue_type_in", "values": ["invalid_code"] },
+      "actions": [
+        {
+          "kind": "rerun_coding",
+          "clinical_path": "claim.claim_data.clinical",
+          "target_path": "claim.claim_data.coding"
+        }
+      ]
+    },
+    {
+      "id": "remove_uncertain_codes",
+      "category": "invalid_code",
+      "base_confidence": 0.6,
+      "when": { "kind": "path_any_equals", "path": "claim.claim_data.coding.icd_codes[*].is_uncertain", "value": true },
+      "actions": [
+        {
+          "kind": "filter_list",
+          "path": "claim.claim_data.coding.icd_codes",
+          "keep_when": { "kind": "any", "rules": [{ "kind": "path_any_equals", "path": "item.is_uncertain", "value": false }, { "kind": "path_any_equals", "path": "item.is_uncertain", "value": null }] }
+        }
+      ]
+    },
+    {
+      "id": "escalate_unknown_reason",
+      "category": "unknown",
+      "base_confidence": 0.4,
+      "when": { "kind": "issue_type_in", "values": ["unknown"] },
+      "actions": []
+    }
+  ],
+  "resubmission": {
+    "rerun_governance": true,
+    "rerun_svm": false
+  },
+  "escalation": {
+    "enabled": true,
+    "queue": "denials_human_review",
+    "rules": [
+      {
+        "id": "escalate_on_low_confidence",
+        "reason": "Low confidence in denial recovery decision",
+        "when": { "kind": "confidence_lt", "threshold_key": "min_strategy_confidence" }
+      },
+      {
+        "id": "escalate_on_conflict",
+        "reason": "Conflicting fixes detected",
+        "when": { "kind": "issue_type_in", "values": ["conflicting_fixes"] }
+      },
+      {
+        "id": "escalate_on_loop",
+        "reason": "Repeated denial loop detected",
+        "when": { "kind": "issue_type_in", "values": ["denial_loop"] }
+      }
+    ]
+  }
+}

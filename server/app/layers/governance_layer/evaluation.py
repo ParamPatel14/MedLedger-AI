@@ -132,6 +132,28 @@ def evaluate_condition(cond: Dict[str, Any], *, ctx: Dict[str, Any], decision_in
         target = cond.get("value")
         vals = get_values(ctx, path)
         return any(v == target for v in vals)
+    if kind in {"path_number_gt", "path_number_gte", "path_number_lt", "path_number_lte"}:
+        path = str(cond.get("path") or "").strip()
+        try:
+            target = float(cond.get("value"))
+        except Exception:
+            return False
+        vals = get_values(ctx, path)
+        nums: List[float] = []
+        for v in vals:
+            try:
+                nums.append(float(v))
+            except Exception:
+                continue
+        if not nums:
+            return False
+        if kind == "path_number_gt":
+            return any(n > target for n in nums)
+        if kind == "path_number_gte":
+            return any(n >= target for n in nums)
+        if kind == "path_number_lt":
+            return any(n < target for n in nums)
+        return any(n <= target for n in nums)
     if kind == "svm_status_in":
         values = {str(x).lower() for x in _as_list(cond.get("values"))}
         statuses: List[str] = []

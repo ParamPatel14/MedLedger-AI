@@ -1,0 +1,26 @@
+{
+  "version": "1.0",
+  "thresholds": {
+    "min_reason_confidence": 0.55,
+    "min_root_cause_confidence": 0.55,
+    "min_strategy_confidence": 0.55,
+    "min_resubmission_confidence": 0.6
+  },
+  "triggers": {
+    "activate_on_status": ["denied", "query"],
+    "terminal_statuses": ["approved"],
+    "resubmission_status": "resubmitted"
+  },
+  "loop_detection": {
+    "max_denials_total": 3,
+    "max_denials_same_type": 2,
+    "max_auto_resubmissions": 2
+  },
+  "learning": {
+    "enabled": true,
+    "prior_success": 0.5,
+    "smoothing_alpha": 1.0,
+    "min_samples_for_boost": 3,
+    "max_boost": 0.25
+  }
+}

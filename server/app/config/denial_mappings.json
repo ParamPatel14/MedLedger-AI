@@ -1,0 +1,59 @@
+{
+  "version": "1.0",
+  "categories": [
+    { "id": "missing_document", "description": "Required attachment or documentation missing" },
+    { "id": "invalid_code", "description": "Diagnosis/procedure code rejected or invalid" },
+    { "id": "policy_violation", "description": "Payer/TPA policy rule violation" },
+    { "id": "financial_issue", "description": "Billing/amount/coverage related financial issue" },
+    { "id": "unknown", "description": "Unknown or unmapped denial reason" }
+  ],
+  "semantic_matching": {
+    "enabled": true,
+    "min_similarity": 0.55,
+    "phrase_weight": 0.35,
+    "regex_weight": 0.45,
+    "code_weight": 0.2
+  },
+  "mappings": [
+    {
+      "id": "missing_document_common",
+      "type": "missing_document",
+      "base_confidence": 0.75,
+      "match": {
+        "regex": ["missing\\s+document", "no\\s+attachment", "submit\\s+documents?", "please\\s+attach"],
+        "codes": ["MD01", "DOC_MISS"],
+        "semantic_phrases": ["missing document", "no attachment received", "please provide documents"]
+      }
+    },
+    {
+      "id": "invalid_code_common",
+      "type": "invalid_code",
+      "base_confidence": 0.75,
+      "match": {
+        "regex": ["invalid\\s+code", "icd\\s+code\\s+not\\s+valid", "procedure\\s+code\\s+rejected", "code\\s+mismatch"],
+        "codes": ["ICD_INV", "PROC_INV"],
+        "semantic_phrases": ["invalid code", "code not valid", "procedure code rejected", "diagnosis code mismatch"]
+      }
+    },
+    {
+      "id": "policy_violation_common",
+      "type": "policy_violation",
+      "base_confidence": 0.7,
+      "match": {
+        "regex": ["policy\\s+violation", "not\\s+covered", "coverage\\s+denied", "benefit\\s+exclusion"],
+        "codes": ["POLICY", "COVERAGE"],
+        "semantic_phrases": ["policy violation", "not covered under plan", "benefit exclusion", "coverage denied"]
+      }
+    },
+    {
+      "id": "financial_issue_common",
+      "type": "financial_issue",
+      "base_confidence": 0.7,
+      "match": {
+        "regex": ["amount\\s+exceeds", "billing\\s+error", "rate\\s+limit", "incorrect\\s+charges?", "co\\-?pay", "deductible"],
+        "codes": ["AMT", "BILL_ERR", "FIN"],
+        "semantic_phrases": ["billing error", "amount exceeds limit", "incorrect charges", "financial issue"]
+      }
+    }
+  ]
+}
