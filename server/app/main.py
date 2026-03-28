@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from dotenv import load_dotenv
+
 from app.utils.logging import configure_logging
 
 from app.api.router import api_router
@@ -10,6 +12,7 @@ from app.db.init_db import init_db
 
 
 def create_app() -> FastAPI:
+    load_dotenv(override=False)
     configure_logging()
     app = FastAPI()
 

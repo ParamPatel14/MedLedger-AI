@@ -178,3 +178,12 @@ def test_denial_email_parse_endpoint(client):
     payload = res.json()
     assert str(payload.get("claim_id") or "") == "ABCD-123456"
     assert "MD01" in (payload.get("rejection_codes") or [])
+
+
+def test_gmail_status_endpoint(client):
+    res = client.get("/denials/gmail/status")
+    assert res.status_code == 200
+    payload = res.json()
+    assert "enabled" in payload
+    assert "ready" in payload
+    assert "env" in payload

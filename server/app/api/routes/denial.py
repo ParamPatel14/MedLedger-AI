@@ -8,7 +8,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.db.session import get_db
-from app.layers.denial_layer.config import get_denial_thresholds
+from app.layers.denial_layer.config import get_denial_email, get_denial_thresholds
 from app.layers.denial_layer.email_ingestion import DenialEmailIngestionService, DenialEmailParser
 from app.layers.denial_layer.service import DenialManagementAgent
 from app.models.denial import Claim, CorrectionApplied, DenialEvent, Resubmission
@@ -21,6 +21,7 @@ from app.schemas.denial import (
     DenialGmailPullIn,
     DenialAgentRunOut,
 )
+from app.services.gmail import GmailApiClient
 
 
 router = APIRouter(tags=["denials"])
@@ -284,3 +285,29 @@ def pull_denial_emails(payload: DenialGmailPullIn, db: Session = Depends(get_db)
         max_results=int(payload.max_results or 10),
         run_agent=bool(payload.run_agent),
     )
+
+
+@router.get("/denials/gmail/status")
+def gmail_status() -> Dict[str, Any]:
+    cfg = get_denial_email()
+    gmail_cfg = cfg.get("gmail") or {}
+    enabled = bool(gmail_cfg.get("enabled"))
+
+    client = GmailApiClient.from_env()
+    ready = client is not None and enabled
+
+    return {
+        "enabled": enabled,
+        "ready": ready,
+        "gmail": {
+            "default_query": str(gmail_cfg.get("default_query") or ""),
+            "label_ids": gmail_cfg.get("label_ids") if isinstance(gmail_cfg.get("label_ids"), list) else [],
+            "max_results": int(gmail_cfg.get("max_results") or 0),
+        },
+        "env": {
+            "has_client_id": bool((__import__("os").getenv("GMAIL_CLIENT_ID") or "").strip()),
+            "has_client_secret": bool((__import__("os").getenv("GMAIL_CLIENT_SECRET") or "").strip()),
+            "has_refresh_token": bool((__import__("os").getenv("GMAIL_REFRESH_TOKEN") or "").strip()),
+            "user_id": str((__import__("os").getenv("GMAIL_USER_ID") or "").strip() or "me"),
+        },
+    }
