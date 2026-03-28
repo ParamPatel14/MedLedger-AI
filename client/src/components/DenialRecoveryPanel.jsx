@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react'
-import { getDenialDashboard } from '../services/api'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { getDenialDashboard, voiceDenialQuery, voiceSpeak } from '../services/api'
 
 function pillClass(status) {
   const s = String(status || '').toLowerCase()
@@ -63,6 +63,20 @@ export default function DenialRecoveryPanel() {
   const [error, setError] = useState('')
   const [data, setData] = useState(null)
   const [expanded, setExpanded] = useState({})
+  const [selectedClaimId, setSelectedClaimId] = useState('')
+  const [selectedDenialEventId, setSelectedDenialEventId] = useState(null)
+
+  const [voiceState, setVoiceState] = useState('idle')
+  const [voiceError, setVoiceError] = useState('')
+  const [voiceTranscript, setVoiceTranscript] = useState('')
+  const [voiceMessage, setVoiceMessage] = useState('')
+  const [voicePrompt, setVoicePrompt] = useState('')
+  const [voiceNeedsMoreInfo, setVoiceNeedsMoreInfo] = useState(false)
+  const [voiceAgentRun, setVoiceAgentRun] = useState(null)
+  const [ttsUrl, setTtsUrl] = useState('')
+
+  const audioRef = useRef(null)
+  const recRef = useRef(null)
 
   useEffect(() => {
     let active = true
@@ -100,6 +114,157 @@ export default function DenialRecoveryPanel() {
 
   const metrics = data?.metrics || {}
   const rows = Array.isArray(data?.denied_claims) ? data.denied_claims : []
+
+  function stopTts() {
+    if (audioRef.current) {
+      try {
+        audioRef.current.pause()
+        audioRef.current.currentTime = 0
+      } catch (e) {
+        void e
+      }
+    }
+  }
+
+  useEffect(() => {
+    return () => {
+      if (ttsUrl) URL.revokeObjectURL(ttsUrl)
+      stopTts()
+    }
+  }, [ttsUrl])
+
+  async function playTts(text) {
+    const t = String(text || '').trim()
+    if (!t) return
+    stopTts()
+    setVoiceError('')
+    try {
+      const blob = await voiceSpeak(t)
+      const url = URL.createObjectURL(blob)
+      setTtsUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev)
+        return url
+      })
+      const a = new Audio(url)
+      audioRef.current = a
+      await a.play()
+    } catch (e) {
+      setVoiceError(e?.message || 'Voice playback failed')
+    }
+  }
+
+  const encodeWav = (buffers, sampleRate) => {
+    const samples = buffers.reduce((acc, b) => acc + b.length, 0)
+    const buffer = new ArrayBuffer(44 + samples * 2)
+    const view = new DataView(buffer)
+    const writeString = (offset, str) => {
+      for (let i = 0; i < str.length; i += 1) view.setUint8(offset + i, str.charCodeAt(i))
+    }
+    const floatTo16BitPCM = (output, offset, input) => {
+      let o = offset
+      for (let i = 0; i < input.length; i += 1) {
+        const s = Math.max(-1, Math.min(1, input[i]))
+        output.setInt16(o, s < 0 ? s * 0x8000 : s * 0x7fff, true)
+        o += 2
+      }
+      return o
+    }
+    writeString(0, 'RIFF')
+    view.setUint32(4, 36 + samples * 2, true)
+    writeString(8, 'WAVE')
+    writeString(12, 'fmt ')
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true)
+    view.setUint16(22, 1, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, sampleRate * 2, true)
+    view.setUint16(32, 2, true)
+    view.setUint16(34, 16, true)
+    writeString(36, 'data')
+    view.setUint32(40, samples * 2, true)
+    let offset = 44
+    for (const b of buffers) offset = floatTo16BitPCM(view, offset, b)
+    return new Blob([view], { type: 'audio/wav' })
+  }
+
+  const startRecording = async () => {
+    if (!selectedClaimId) {
+      setVoiceError('Select a claim first (click a claim row).')
+      return
+    }
+    stopTts()
+    setVoiceError('')
+    setVoiceTranscript('')
+    setVoiceMessage('')
+    setVoicePrompt('')
+    setVoiceAgentRun(null)
+    setVoiceState('recording')
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const AudioCtx = window.AudioContext || window.webkitAudioContext
+      const ctx = new AudioCtx()
+      const source = ctx.createMediaStreamSource(stream)
+      const processor = ctx.createScriptProcessor(4096, 1, 1)
+      const buffers = []
+      processor.onaudioprocess = (e) => {
+        const input = e.inputBuffer.getChannelData(0)
+        buffers.push(new Float32Array(input))
+      }
+      source.connect(processor)
+      processor.connect(ctx.destination)
+      recRef.current = { stream, ctx, source, processor, buffers }
+    } catch (e) {
+      setVoiceState('idle')
+      setVoiceError(e?.message || 'Microphone access failed')
+    }
+  }
+
+  const stopRecording = async () => {
+    const rec = recRef.current
+    if (!rec) return
+    recRef.current = null
+    setVoiceState('processing')
+    try {
+      try {
+        rec.processor.disconnect()
+        rec.source.disconnect()
+      } catch (e) {
+        void e
+      }
+      try {
+        rec.stream.getTracks().forEach((t) => t.stop())
+      } catch (e) {
+        void e
+      }
+      let sampleRate = 16000
+      try {
+        sampleRate = Number(rec.ctx.sampleRate) || sampleRate
+        await rec.ctx.close()
+      } catch (e) {
+        void e
+      }
+
+      const wav = encodeWav(rec.buffers, sampleRate)
+      const mode = voiceNeedsMoreInfo ? 'provide_denial_reason' : 'auto'
+      const out = await voiceDenialQuery({
+        audioWavBlob: wav,
+        claimId: selectedClaimId,
+        denialEventId: selectedDenialEventId,
+        mode,
+      })
+      setVoiceTranscript(String(out?.transcript || ''))
+      setVoiceMessage(String(out?.message || ''))
+      setVoicePrompt(String(out?.prompt || ''))
+      setVoiceNeedsMoreInfo(Boolean(out?.needs_more_info))
+      setVoiceAgentRun(out?.agent_run || null)
+      setVoiceState('idle')
+      const speakText = String(out?.prompt || out?.message || '').trim()
+      if (speakText) await playTts(speakText)
+    } catch (e) {
+      setVoiceState('idle')
+      setVoiceError(e?.message || 'Voice request failed')
+    }
+  }
 
   return (
     <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -150,6 +315,76 @@ export default function DenialRecoveryPanel() {
         </div>
       </div>
 
+      <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-slate-800">Denial Voice Assistant</div>
+            <div className="mt-1 text-xs text-slate-500">
+              Uses Whisper (STT) + Piper (TTS). If denial details are missing, read the denial email and it will run corrections.
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {voiceState !== 'recording' ? (
+              <button className="btn btnSecondary" onClick={startRecording} disabled={voiceState !== 'idle'}>
+                Start Voice
+              </button>
+            ) : (
+              <button className="btn btnPrimary text-white" onClick={stopRecording}>
+                Stop & Send
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Selected Claim</div>
+            <div className="mt-2 text-xs text-slate-700">
+              {selectedClaimId ? (
+                <div className="font-semibold text-slate-900">{selectedClaimId}</div>
+              ) : (
+                <div className="text-slate-500">Click a claim row to select it.</div>
+              )}
+              {selectedDenialEventId ? <div className="mt-1 text-[11px] text-slate-500">Denial event: {String(selectedDenialEventId)}</div> : null}
+            </div>
+            {voiceState === 'processing' && <div className="mt-2 text-xs text-slate-500">Processing voice…</div>}
+            {voiceError && <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-600">{voiceError}</div>}
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Assistant Output</div>
+            {voiceTranscript ? (
+              <div className="mt-2">
+                <div className="text-[11px] font-semibold text-slate-600">Transcript</div>
+                <div className="mt-1 rounded-lg border border-slate-200 bg-slate-50 p-2 text-xs text-slate-700">{voiceTranscript}</div>
+              </div>
+            ) : (
+              <div className="mt-2 text-xs text-slate-500">Say: “Summarize denial”, “Fix and resubmit”, or read the denial email.</div>
+            )}
+            {voiceMessage && (
+              <div className="mt-3">
+                <div className="text-[11px] font-semibold text-slate-600">Message</div>
+                <div className="mt-1 text-xs text-slate-700">{voiceMessage}</div>
+              </div>
+            )}
+            {voicePrompt && (
+              <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2 text-xs text-amber-900">
+                {voicePrompt}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {voiceAgentRun && (
+          <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Agent Result</div>
+            <pre className="mt-2 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
+              {JSON.stringify(voiceAgentRun, null, 2)}
+            </pre>
+          </div>
+        )}
+      </div>
+
       <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
         <div className="grid grid-cols-12 gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
           <div className="col-span-3">Claim</div>
@@ -178,7 +413,11 @@ export default function DenialRecoveryPanel() {
             <div key={claimId} className="border-b border-slate-200 last:border-b-0">
               <button
                 className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors"
-                onClick={() => setExpanded((p) => ({ ...p, [claimId]: !p[claimId] }))}
+                onClick={() => {
+                  setSelectedClaimId(claimId)
+                  setSelectedDenialEventId(r?.last_denial_event_id ?? null)
+                  setExpanded((p) => ({ ...p, [claimId]: !p[claimId] }))
+                }}
               >
                 <div className="grid grid-cols-12 items-center gap-2">
                   <div className="col-span-3">
