@@ -31,6 +31,56 @@ function svmStatusColor(status) {
   return 'bg-slate-50 text-slate-700 border-slate-200'
 }
 
+function decisionColor(decision) {
+  const d = String(decision || '').toUpperCase()
+  if (d === 'APPROVE') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  if (d === 'WARN') return 'bg-amber-50 text-amber-800 border-amber-200'
+  if (d === 'ESCALATE') return 'bg-orange-50 text-orange-700 border-orange-200'
+  if (d === 'BLOCK') return 'bg-rose-50 text-rose-700 border-rose-200'
+  return 'bg-slate-50 text-slate-700 border-slate-200'
+}
+
+function normalizeIssues(items) {
+  const list = Array.isArray(items) ? items : []
+  return list.filter((x) => x && typeof x === 'object')
+}
+
+function issueCounts(issues) {
+  const list = normalizeIssues(issues)
+  const counts = { critical: 0, error: 0, warning: 0, info: 0, other: 0 }
+  for (const it of list) {
+    const s = String(it?.severity || '').toLowerCase()
+    if (s === 'critical') counts.critical += 1
+    else if (s === 'error') counts.error += 1
+    else if (s === 'warning') counts.warning += 1
+    else if (s === 'info') counts.info += 1
+    else counts.other += 1
+  }
+  return counts
+}
+
+function uniqStrings(items) {
+  const list = Array.isArray(items) ? items : []
+  const seen = new Set()
+  const out = []
+  for (const x of list) {
+    const s = String(x || '').trim()
+    if (!s) continue
+    if (seen.has(s)) continue
+    seen.add(s)
+    out.push(s)
+  }
+  return out
+}
+
+function stageDecisionLabel(status) {
+  const s = String(status || '').toLowerCase()
+  if (s === 'pass') return 'PASS'
+  if (s === 'review') return 'WARN'
+  if (s === 'escalated') return 'ESCALATE'
+  return '—'
+}
+
 function renderTags(items, className) {
   const list = Array.isArray(items) ? items : []
   if (!list.length) {
@@ -65,6 +115,7 @@ export default function AgentWorkflowPanel() {
   const coding = result?.coding || null
   const payer = result?.payer || null
   const svm = result?.svm || null
+  const governance = result?.governance || null
 
   const svmStages = useMemo(() => {
     if (!svm || typeof svm !== 'object') return []
@@ -79,6 +130,115 @@ export default function AgentWorkflowPanel() {
     return Array.isArray(list) ? list : []
   }, [coding])
 
+  const governanceIssues = useMemo(() => normalizeIssues(governance?.issues), [
+    governance,
+  ])
+  const policyTriggered = useMemo(() => {
+    return uniqStrings(
+      governanceIssues
+        .map((x) => x?.policy_id)
+        .filter((x) => x !== null && x !== undefined),
+    )
+  }, [governanceIssues])
+  const guardrailDetectors = useMemo(() => {
+    return uniqStrings(
+      governanceIssues
+        .map((x) => x?.detector_id)
+        .filter((x) => x !== null && x !== undefined),
+    )
+  }, [governanceIssues])
+  const govCounts = useMemo(
+    () => issueCounts(governanceIssues),
+    [governanceIssues],
+  )
+
+  const decisionTimeline = useMemo(() => {
+    const rows = []
+    rows.push({
+      step: 'Clinical',
+      score: clinical?.confidence,
+      decision: stageDecisionLabel(svm?.svm_after_clinical?.status),
+      meta: svm?.svm_after_clinical?.status ? 'SVM after clinical' : '',
+    })
+    rows.push({
+      step: 'Coding',
+      score: coding?.confidence,
+      decision: stageDecisionLabel(svm?.svm_after_coding?.status),
+      meta: svm?.svm_after_coding?.status ? 'SVM after coding' : '',
+    })
+    rows.push({
+      step: 'Rule',
+      score: payer?.confidence,
+      decision: stageDecisionLabel(svm?.svm_after_rules?.status),
+      meta: payer ? (payer.is_valid ? 'Valid' : 'Invalid') : '',
+    })
+    rows.push({
+      step: 'Policy',
+      score: governance ? governanceIssues.length : null,
+      decision:
+        governanceIssues.length > 0
+          ? String(
+              governanceIssues.some((x) =>
+                String(x?.severity || '').toLowerCase().includes('critical'),
+              )
+                ? 'VIOLATION'
+                : 'FLAGGED',
+            )
+          : governance
+            ? 'CLEAR'
+            : '—',
+      meta:
+        policyTriggered.length || guardrailDetectors.length
+          ? `${policyTriggered.length} policies, ${guardrailDetectors.length} detectors`
+          : '',
+    })
+    rows.push({
+      step: 'Decision',
+      score: governance?.confidence,
+      decision: String(governance?.decision || '—').toUpperCase(),
+      meta: governance?.audit_id ? `Audit ${String(governance.audit_id).slice(0, 8)}` : '',
+    })
+    return rows
+  }, [
+    clinical,
+    coding,
+    payer,
+    svm,
+    governance,
+    governanceIssues,
+    policyTriggered,
+    guardrailDetectors,
+  ])
+
+  const alertItems = useMemo(() => {
+    const items = []
+    if (governance?.refusal?.status === 'refused') {
+      items.push({
+        kind: 'refusal',
+        severity: 'critical',
+        title: 'Refusal',
+        message: governance?.refusal?.message || 'Insufficient information. Cannot proceed.',
+      })
+    }
+    if (governance?.escalation?.status === 'escalated') {
+      items.push({
+        kind: 'escalation',
+        severity: 'warning',
+        title: 'Escalation',
+        message: governance?.escalation?.reason || 'Escalated to human review',
+      })
+    }
+    for (const it of governanceIssues.slice(0, 10)) {
+      items.push({
+        kind: it?.type || 'issue',
+        severity: it?.severity || 'warning',
+        title: String(it?.type || 'issue'),
+        message: String(it?.message || ''),
+      })
+    }
+    return items
+  }, [governance, governanceIssues])
+
   return (
     <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -87,7 +247,7 @@ export default function AgentWorkflowPanel() {
             Agentic Coding Workflow
           </div>
           <p className="text-xs text-slate-500">
-            Clinical → SVM → Coding → SVM → Rule → SVM, with per-agent outputs and validation.
+            Clinical → SVM → Coding → SVM → Rule → SVM → Governance, with guardrails and audit.
           </p>
         </div>
         {result?.record_id && (
@@ -157,7 +317,7 @@ export default function AgentWorkflowPanel() {
               Agent Flow Visualization
             </div>
             <span className="text-xs text-slate-500">
-              Overall confidence: {formatScore(result?.confidence)}
+              Final confidence: {formatScore(governance?.confidence ?? result?.confidence)}
             </span>
           </div>
 
@@ -169,6 +329,7 @@ export default function AgentWorkflowPanel() {
               { key: 'svm_after_coding', label: 'SVM' },
               { key: 'rule', label: 'Rule' },
               { key: 'svm_after_rules', label: 'SVM' },
+              { key: 'governance', label: 'Governance' },
             ].map((s, idx, arr) => {
               const step = flow.find((x) => x?.agent === s.key)
               const stepStatus = step?.status || (result ? 'skipped' : 'idle')
@@ -196,6 +357,15 @@ export default function AgentWorkflowPanel() {
                         {String(svmStatus)}
                       </span>
                     ) : null}
+                    {s.key === 'governance' && governance?.decision ? (
+                      <span
+                        className={`mt-1 inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] ${decisionColor(
+                          governance.decision,
+                        )}`}
+                      >
+                        {String(governance.decision).toUpperCase()}
+                      </span>
+                    ) : null}
                   </div>
                   {idx < arr.length - 1 && (
                     <span className="text-slate-300" aria-hidden="true">
@@ -205,6 +375,210 @@ export default function AgentWorkflowPanel() {
                 </div>
               )
             })}
+          </div>
+
+          <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Confidence + Decision
+                </div>
+                <div className="mt-1 text-xs text-slate-600">
+                  {governance?.reason ? String(governance.reason) : '—'}
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <span
+                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${decisionColor(
+                    governance?.decision,
+                  )}`}
+                >
+                  {governance?.decision ? String(governance.decision).toUpperCase() : '—'}
+                </span>
+                {governance?.audit_id ? (
+                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+                    Audit {String(governance.audit_id).slice(0, 8)}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="mt-3 overflow-auto rounded-lg border border-slate-200">
+              <table className="min-w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="px-3 py-2 font-semibold">Step</th>
+                    <th className="px-3 py-2 font-semibold">Score</th>
+                    <th className="px-3 py-2 font-semibold">Decision</th>
+                    <th className="px-3 py-2 font-semibold">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {decisionTimeline.map((r, i) => (
+                    <tr key={`${r.step}-${i}`} className="border-t border-slate-100">
+                      <td className="px-3 py-2 font-semibold text-slate-800 whitespace-nowrap">
+                        {r.step}
+                      </td>
+                      <td className="px-3 py-2 text-slate-700">
+                        {r.step === 'Policy'
+                          ? r.score === null || r.score === undefined
+                            ? '—'
+                            : String(r.score)
+                          : formatScore(r.score)}
+                      </td>
+                      <td className="px-3 py-2">
+                        {r.step === 'Decision' ? (
+                          <span
+                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${decisionColor(
+                              r.decision,
+                            )}`}
+                          >
+                            {r.decision}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
+                            {r.decision}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-slate-600">{r.meta || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Guardrail Panel
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  Triggered: {policyTriggered.length + guardrailDetectors.length}
+                </span>
+              </div>
+              <div className="mt-2">
+                <div className="text-[11px] font-semibold text-slate-600">
+                  Policies triggered
+                </div>
+                <div className="mt-2">
+                  {renderTags(policyTriggered, 'bg-white text-slate-700 border-slate-200')}
+                </div>
+              </div>
+              <div className="mt-3">
+                <div className="text-[11px] font-semibold text-slate-600">
+                  Edge detectors
+                </div>
+                <div className="mt-2">
+                  {renderTags(guardrailDetectors, 'bg-white text-slate-700 border-slate-200')}
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
+                <span className={`rounded-full border px-2 py-0.5 ${severityColor('critical')}`}>
+                  critical {govCounts.critical}
+                </span>
+                <span className={`rounded-full border px-2 py-0.5 ${severityColor('error')}`}>
+                  error {govCounts.error}
+                </span>
+                <span className={`rounded-full border px-2 py-0.5 ${severityColor('warning')}`}>
+                  warning {govCounts.warning}
+                </span>
+              </div>
+              <div className="mt-3">
+                <div className="text-[11px] font-semibold text-slate-600">
+                  Violations
+                </div>
+                {governanceIssues.length ? (
+                  <div className="mt-2 space-y-2">
+                    {governanceIssues.slice(0, 8).map((issue, i) => (
+                      <div
+                        key={`${issue?.policy_id || issue?.detector_id || issue?.type || 'issue'}-${i}`}
+                        className={`rounded-lg border px-3 py-2 text-xs ${severityColor(issue?.severity)}`}
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-semibold">
+                            {String(issue?.type || 'issue')}
+                          </span>
+                          <span className="text-[11px]">
+                            {String(issue?.severity || 'warning')}
+                          </span>
+                        </div>
+                        <div className="mt-1">{String(issue?.message || '')}</div>
+                        {(issue?.policy_id || issue?.detector_id) && (
+                          <div className="mt-2 text-[11px] text-slate-600">
+                            {issue?.policy_id ? `policy: ${String(issue.policy_id)}` : ''}
+                            {issue?.policy_id && issue?.detector_id ? ' • ' : ''}
+                            {issue?.detector_id ? `detector: ${String(issue.detector_id)}` : ''}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-2 text-xs text-slate-400">No violations</div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Alert System
+                </div>
+                <span className="text-[11px] text-slate-500">
+                  Alerts: {alertItems.length}
+                </span>
+              </div>
+              {alertItems.length ? (
+                <div className="mt-3 space-y-2">
+                  {alertItems.slice(0, 10).map((a, i) => (
+                    <div
+                      key={`${a.kind}-${i}`}
+                      className={`rounded-lg border px-3 py-2 text-xs ${severityColor(a.severity)}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-semibold">{String(a.title)}</span>
+                        <span className="text-[11px]">{String(a.severity)}</span>
+                      </div>
+                      <div className="mt-1">{String(a.message)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-3 text-xs text-slate-400">No alerts</div>
+              )}
+
+              <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Decision Timeline
+                </div>
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  {[
+                    'Clinical',
+                    'Coding',
+                    'SVM',
+                    'Policy',
+                    'Decision',
+                  ].map((label, idx, arr) => (
+                    <div key={label} className="flex items-center gap-2">
+                      <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                        {label}
+                      </span>
+                      {idx < arr.length - 1 && (
+                        <span className="text-slate-300" aria-hidden="true">
+                          →
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <div className="mt-3 text-xs text-slate-600">
+                  Clinical → SVM → Coding → SVM → Rule → SVM → Policy → Decision
+                </div>
+              </div>
+            </div>
           </div>
 
           <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
