@@ -44,6 +44,7 @@ class DenialReasonEngine:
     def __init__(self) -> None:
         self._compiled: Dict[str, List[re.Pattern[str]]] = {}
         self._phrase_embeddings: Dict[str, np.ndarray] = {}
+        self._phrase_texts: Dict[str, List[str]] = {}
 
     def _prepare(self, mappings_cfg: Dict[str, Any]) -> None:
         mappings = mappings_cfg.get("mappings") or []
@@ -67,13 +68,26 @@ class DenialReasonEngine:
 
             phrases = match.get("semantic_phrases") or []
             if isinstance(phrases, list) and phrases:
-                key = f"phrases::{mid}"
-                if key in self._phrase_embeddings:
-                    continue
-                vecs = encode_texts([str(p or "") for p in phrases if str(p or "").strip()])
-                if vecs is None or vecs.size == 0:
-                    continue
-                self._phrase_embeddings[key] = normalize(vecs)
+                if mid not in self._phrase_texts:
+                    self._phrase_texts[mid] = [str(p or "").strip() for p in phrases if str(p or "").strip()]
+
+    def _phrase_matrix(self, mapping_id: str) -> Optional[np.ndarray]:
+        mid = str(mapping_id or "").strip()
+        if not mid:
+            return None
+        key = f"phrases::{mid}"
+        existing = self._phrase_embeddings.get(key)
+        if existing is not None:
+            return existing
+        phrases = self._phrase_texts.get(mid) or []
+        if not phrases:
+            return None
+        vecs = encode_texts(phrases)
+        if vecs is None or getattr(vecs, "size", 0) <= 0:
+            return None
+        mat = normalize(vecs)
+        self._phrase_embeddings[key] = mat
+        return mat
 
     def extract(
         self,
@@ -93,16 +107,12 @@ class DenialReasonEngine:
         w_regex = float(semantic_cfg.get("regex_weight", 0.0) or 0.0)
         w_code = float(semantic_cfg.get("code_weight", 0.0) or 0.0)
 
-        text_vec = None
-        if enabled and text:
-            vec = encode_text(text)
-            if vec is not None and getattr(vec, "size", 0) > 0:
-                text_vec = normalize_single(vec)
-
         out: List[DenialReason] = []
         mappings = mappings_cfg.get("mappings") or []
         if not isinstance(mappings, list):
             mappings = []
+
+        text_vec: Optional[np.ndarray] = None
 
         for m in mappings:
             if not isinstance(m, dict):
@@ -124,15 +134,20 @@ class DenialReasonEngine:
                 code_score = 1.0 if bool(set(codes).intersection(mapping_codes)) else 0.0
 
             phrase_score = 0.0
-            if enabled and text_vec is not None:
-                emb_key = f"phrases::{mid}"
-                phrase_emb = self._phrase_embeddings.get(emb_key)
-                if phrase_emb is not None and phrase_emb.size > 0:
-                    sims = phrase_emb @ text_vec
-                    try:
-                        phrase_score = float(np.max(sims))
-                    except Exception:
-                        phrase_score = 0.0
+            need_semantic = bool(enabled and w_phrase > 0.0 and text and regex_score <= 0.0 and code_score <= 0.0 and (self._phrase_texts.get(mid) or []))
+            if need_semantic:
+                if text_vec is None:
+                    vec = encode_text(text)
+                    if vec is not None and getattr(vec, "size", 0) > 0:
+                        text_vec = normalize_single(vec)
+                if text_vec is not None:
+                    phrase_emb = self._phrase_matrix(mid)
+                    if phrase_emb is not None and getattr(phrase_emb, "size", 0) > 0:
+                        sims = phrase_emb @ text_vec
+                        try:
+                            phrase_score = float(np.max(sims))
+                        except Exception:
+                            phrase_score = 0.0
 
             combined = (w_regex * regex_score) + (w_code * code_score) + (w_phrase * phrase_score)
             confidence = max(base, min(1.0, base + combined * (1.0 - base)))

@@ -58,7 +58,7 @@ class CorrectionResult:
 class CorrectionEngine:
     def __init__(self) -> None:
         self._learning = LearningService()
-        self._coding_agent = CodingAgent()
+        self._coding_agent: Optional[CodingAgent] = None
 
     def _make_inputs(self, ctx: Dict[str, Any], denial_reason_types: List[str], confidence: float) -> DecisionInputs:
         external_issues = [{"type": t, "severity": "info"} for t in denial_reason_types if str(t or "").strip()]
@@ -210,6 +210,8 @@ class CorrectionEngine:
                     confidence=float(cd.get("confidence") or 0.0),
                     explanation=str(cd.get("explanation") or ""),
                 )
+                if self._coding_agent is None:
+                    self._coding_agent = CodingAgent()
                 coding_out = self._coding_agent.run(db, record_id=claim_record_id, clinical=clinical, top_k=int(a.get("top_k") or 3))
                 patch_ops.extend(set_path(wrap, target_path, coding_out.to_dict()))
                 updated = wrap.get("claim", {}).get("claim_data") or updated

@@ -117,6 +117,12 @@ class DenialManagementAgent:
             loop_cfg = thresholds_cfg.get("loop_detection") or {}
             max_total = int(loop_cfg.get("max_denials_total", 0) or 0)
             max_same = int(loop_cfg.get("max_denials_same_type", 0) or 0)
+            max_resub = int(loop_cfg.get("max_auto_resubmissions", 0) or 0)
+
+            triggers = thresholds_cfg.get("triggers") or {}
+            watched_statuses = [str(x).strip().lower() for x in (triggers.get("activate_on_status") or []) if str(x).strip()]
+            if not watched_statuses:
+                watched_statuses = ["denied", "query"]
 
             denial_reasons = state.get("denial_reasons") or []
             types = [str(r.get("type") or "").strip() for r in denial_reasons if isinstance(r, dict) and str(r.get("type") or "").strip()]
@@ -125,7 +131,7 @@ class DenialManagementAgent:
             total_denials = int(
                 db.query(func.count(DenialEvent.id))
                 .filter(DenialEvent.claim_id == claim_id)
-                .filter(DenialEvent.status.in_(["denied", "query"]))
+                .filter(DenialEvent.status.in_(watched_statuses))
                 .scalar()
                 or 0
             )
@@ -134,7 +140,7 @@ class DenialManagementAgent:
                 rows = (
                     db.query(DenialEvent.structured_reasons)
                     .filter(DenialEvent.claim_id == claim_id)
-                    .filter(DenialEvent.status.in_(["denied", "query"]))
+                    .filter(DenialEvent.status.in_(watched_statuses))
                     .all()
                 )
                 for (sr,) in rows:
@@ -147,7 +153,17 @@ class DenialManagementAgent:
                 issues = state.get("issues") or []
                 issues.append({"type": "denial_loop", "severity": "critical", "total_denials": total_denials, "same_type": same_type_denials})
                 state["issues"] = issues
-            state["audit"]["loop"] = {"total_denials": total_denials, "same_type_denials": same_type_denials, "main_type": main_type}
+            resubmissions = int(db.query(func.count(Resubmission.id)).filter(Resubmission.claim_id == claim_id).scalar() or 0)
+            if max_resub and resubmissions > max_resub:
+                issues = state.get("issues") or []
+                issues.append({"type": "denial_loop", "severity": "critical", "auto_resubmissions": resubmissions})
+                state["issues"] = issues
+            state["audit"]["loop"] = {
+                "total_denials": total_denials,
+                "same_type_denials": same_type_denials,
+                "main_type": main_type,
+                "auto_resubmissions": resubmissions,
+            }
             return state
 
         def correction_node(state: DenialGraphState) -> DenialGraphState:
@@ -176,6 +192,42 @@ class DenialManagementAgent:
             state["audit"]["strategies"] = [s.to_dict() for s in out.selections]
             return state
 
+        def _apply_escalation_rules(state: DenialGraphState) -> DenialGraphState:
+            issues = state.get("issues") or []
+            decision_inputs = DecisionInputs(
+                raw_text=str(state.get("denial_raw_reason") or ""),
+                workflow_confidence=float(state.get("confidence") or 0.0),
+                svm={},
+                policy_issues=[],
+                edge_issues=[],
+                external_issues=issues if isinstance(issues, list) else [],
+            )
+            escalation_cfg = rules_cfg.get("escalation") or {}
+            esc_rules = escalation_cfg.get("rules") or []
+            if not isinstance(esc_rules, list):
+                esc_rules = []
+
+            matched_rule = None
+            for r in esc_rules:
+                if not isinstance(r, dict):
+                    continue
+                cond = r.get("when") or {}
+                if not isinstance(cond, dict):
+                    continue
+                if evaluate_condition(cond, ctx={"thresholds": thresholds_cfg, **state}, decision_inputs=decision_inputs):
+                    matched_rule = r
+                    break
+
+            if matched_rule is not None:
+                state["escalated"] = True
+                state["escalation"] = {
+                    "status": "escalated",
+                    "reason": str(matched_rule.get("reason") or "Escalated"),
+                    "matched_rule_id": str(matched_rule.get("id") or ""),
+                    "queue": str(escalation_cfg.get("queue") or ""),
+                }
+            return state
+
         def decide_node(state: DenialGraphState) -> DenialGraphState:
             issues = state.get("issues") or []
             correction = state.get("correction") or {}
@@ -191,60 +243,37 @@ class DenialManagementAgent:
             issues.extend(detect_patch_conflicts(patch_ops, [str(x or "") for x in conflict_fields if str(x or "").strip()]))
             state["issues"] = issues
 
+            selections = correction.get("selections") or []
+            effective = False
+            for s in selections if isinstance(selections, list) else []:
+                if not isinstance(s, dict):
+                    continue
+                actions = s.get("actions") or []
+                if isinstance(actions, list) and len(actions) > 0:
+                    effective = True
+                    break
+            if selections and not effective:
+                issues.append({"type": "no_effective_fix", "severity": "critical", "message": "Selected strategy produced no fix actions"})
+                state["issues"] = issues
+
             thr_cfg = (thresholds_cfg.get("thresholds") or {}) if isinstance(thresholds_cfg.get("thresholds"), dict) else {}
             min_conf = float(thr_cfg.get("min_strategy_confidence", 0.0) or 0.0)
 
-            decision_inputs = DecisionInputs(
-                raw_text=str(state.get("denial_raw_reason") or ""),
-                workflow_confidence=float(state.get("confidence") or 0.0),
-                svm={},
-                policy_issues=[],
-                edge_issues=[],
-                external_issues=issues if isinstance(issues, list) else [],
-            )
-            escalation_cfg = rules_cfg.get("escalation") or {}
-            esc_rules = escalation_cfg.get("rules") or []
-            if not isinstance(esc_rules, list):
-                esc_rules = []
-
-            escalated = False
-            matched_rule = None
-            for r in esc_rules:
-                if not isinstance(r, dict):
-                    continue
-                cond = r.get("when") or {}
-                if not isinstance(cond, dict):
-                    continue
-                if evaluate_condition(cond, ctx={"thresholds": thresholds_cfg, **state}, decision_inputs=decision_inputs):
-                    escalated = True
-                    matched_rule = r
-                    break
-
             if float(state.get("confidence") or 0.0) < min_conf:
-                escalated = True
-                if matched_rule is None:
-                    matched_rule = {"id": "low_confidence", "reason": "Low confidence in correction strategy"}
+                issues.append({"type": "low_confidence", "severity": "critical", "message": "Low confidence in correction strategy"})
+                state["issues"] = issues
 
             no_actions = not bool((correction.get("selections") or []))
             if no_actions:
-                escalated = True
-                if matched_rule is None:
-                    matched_rule = {"id": "no_strategy", "reason": "No correction strategy selected"}
+                issues.append({"type": "no_strategy", "severity": "critical", "message": "No correction strategy selected"})
+                state["issues"] = issues
 
             mode = str((conflict_cfg.get("mode") or "escalate")).strip().lower()
             if mode == "escalate" and any(str(x.get("type") or "") == "conflicting_fixes" for x in (issues or []) if isinstance(x, dict)):
-                escalated = True
-                if matched_rule is None:
-                    matched_rule = {"id": "conflicting_fixes", "reason": "Conflicting fixes detected"}
+                issues.append({"type": "conflicting_fixes", "severity": "critical", "message": "Conflicting fixes detected"})
+                state["issues"] = issues
 
-            state["escalated"] = bool(escalated)
-            if escalated:
-                state["escalation"] = {
-                    "status": "escalated",
-                    "reason": str((matched_rule or {}).get("reason") or "Escalated"),
-                    "matched_rule_id": str((matched_rule or {}).get("id") or ""),
-                    "queue": str(escalation_cfg.get("queue") or ""),
-                }
+            state = _apply_escalation_rules(state)
             return state
 
         def resubmit_node(state: DenialGraphState) -> DenialGraphState:
@@ -259,6 +288,9 @@ class DenialManagementAgent:
             state["resubmission"] = result.to_dict()
             return state
 
+        def post_resubmit_decide_node(state: DenialGraphState) -> DenialGraphState:
+            return _apply_escalation_rules(state)
+
         def route_after_decide(state: DenialGraphState) -> str:
             return "end_escalated" if bool(state.get("escalated")) else "do_resubmit"
 
@@ -270,6 +302,7 @@ class DenialManagementAgent:
         graph.add_node("correction", correction_node)
         graph.add_node("decide", decide_node)
         graph.add_node("resubmit", resubmit_node)
+        graph.add_node("post_resubmit_decide", post_resubmit_decide_node)
 
         graph.set_entry_point("load")
         graph.add_conditional_edges("load", should_activate, {"activate": "reason", "ignore": END})
@@ -278,7 +311,8 @@ class DenialManagementAgent:
         graph.add_edge("loop", "correction")
         graph.add_edge("correction", "decide")
         graph.add_conditional_edges("decide", route_after_decide, {"do_resubmit": "resubmit", "end_escalated": END})
-        graph.add_edge("resubmit", END)
+        graph.add_edge("resubmit", "post_resubmit_decide")
+        graph.add_edge("post_resubmit_decide", END)
         app = graph.compile()
 
         initial: DenialGraphState = {"confidence": 0.0}

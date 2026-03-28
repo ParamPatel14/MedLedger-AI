@@ -105,6 +105,16 @@
         "id": "escalate_on_loop",
         "reason": "Repeated denial loop detected",
         "when": { "kind": "issue_type_in", "values": ["denial_loop"] }
+      },
+      {
+        "id": "escalate_on_no_effective_fix",
+        "reason": "No effective fix actions available for the denial",
+        "when": { "kind": "issue_type_in", "values": ["no_effective_fix"] }
+      },
+      {
+        "id": "escalate_on_resubmission_needs_review",
+        "reason": "Resubmission confidence below threshold",
+        "when": { "kind": "path_any_equals", "path": "resubmission.status", "value": "needs_review" }
       }
     ]
   }

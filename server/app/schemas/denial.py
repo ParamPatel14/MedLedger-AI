@@ -33,3 +33,7 @@ class DenialAgentRunOut(BaseModel):
     confidence: float = 0.0
     audit: Dict[str, Any] = Field(default_factory=dict)
 
+
+class ClaimOutcomeIn(BaseModel):
+    claim_id: str
+    outcome_status: str
