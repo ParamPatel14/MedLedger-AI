@@ -1,0 +1,19 @@
+{
+  "version": "1.0",
+  "money": {
+    "multipliers": {
+      "k": 1000,
+      "lakh": 100000,
+      "l": 100000
+    }
+  },
+  "units": {
+    "aliases": {
+      "rs/day": "INR/day",
+      "inr/day": "INR/day",
+      "₹/day": "INR/day",
+      "rs per day": "INR/day",
+      "inr per day": "INR/day"
+    }
+  }
+}

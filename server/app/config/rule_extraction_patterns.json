@@ -1,0 +1,35 @@
+{
+  "version": "1.0",
+  "email": {
+    "default_query": "newer_than:30d (policy OR circular OR update) (denied OR denial OR \"claim denied\" OR rule OR limit)",
+    "label_ids": ["INBOX"],
+    "max_results": 20
+  },
+  "tpa_detection": {
+    "patterns": [
+      "\\bTPA\\s*[:\\-]?\\s*([A-Za-z0-9_\\- ]{2,64})\\b"
+    ]
+  },
+  "rule_types": {
+    "comparators": {
+      "limit": "max",
+      "minimum": "min"
+    }
+  },
+  "patterns": [
+    {
+      "id": "room_rent_limit_generic",
+      "enabled": true,
+      "rule_type": "limit",
+      "category": "room_rent",
+      "tpa_regex": ".*",
+      "regex": "(?i)room\\s*rent[^\\d₹]{0,60}(?:₹|INR)?\\s*([0-9][0-9,\\.]*\\s*(?:k|K|lakh|L)?)\\s*(?:/(?:day|night)|per\\s*day|per\\s*night)?",
+      "unit": "INR/day",
+      "base_confidence": 0.7,
+      "excerpt_context": 80,
+      "conditions": {
+        "scope": "general"
+      }
+    }
+  ]
+}

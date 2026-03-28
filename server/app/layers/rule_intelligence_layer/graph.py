@@ -56,7 +56,13 @@ class RuleLangGraphPipeline:
                 norm = item.get("normalized")
                 if not isinstance(cand, RuleCandidate) or not isinstance(norm, NormalizedRuleValue):
                     continue
-                decision = score_confidence(extraction_confidence=float(cand.extraction_confidence or 0.0), source=str(cand.source or ""))
+                meta = cand.meta if isinstance(getattr(cand, "meta", None), dict) else {}
+                decision = score_confidence(
+                    extraction_confidence=float(cand.extraction_confidence or 0.0),
+                    source=str(cand.source or ""),
+                    match_type=str(meta.get("match_type") or ""),
+                    match_strength=float(meta.get("match_strength") or 1.0),
+                )
                 rows.append({**item, "confidence": decision.confidence, "decision": decision})
             state["normalized"] = rows
             return state

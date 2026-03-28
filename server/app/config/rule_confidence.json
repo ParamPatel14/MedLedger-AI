@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "default_source_weight": 0.5,
+  "source_weights": {
+    "pdf": 0.95,
+    "email": 0.85,
+    "web": 0.6,
+    "portal": 0.9
+  },
+  "default_match_type_weight": 1.0,
+  "match_type_weights": {
+    "regex": 0.9,
+    "semantic": 1.0
+  },
+  "max_match_strength": 5.0,
+  "min_store_confidence": 0.2,
+  "min_use_confidence": 0.75,
+  "conflict": {
+    "min_confidence": 0.75,
+    "condition_exclusion_keys": ["scope"]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "version": "1.0",
+  "enabled": false,
+  "interval_seconds": 900,
+  "gmail": {
+    "enabled": false,
+    "query": "",
+    "label_ids": ["INBOX"],
+    "max_results": 20
+  }
+}

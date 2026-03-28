@@ -19,6 +19,9 @@ def create_app() -> FastAPI:
     @app.on_event("startup")
     def _startup() -> None:
         init_db()
+        from app.layers.rule_intelligence_layer.scheduler import RuleSyncScheduler
+
+        RuleSyncScheduler().start()
 
     app.add_middleware(
         CORSMiddleware,
