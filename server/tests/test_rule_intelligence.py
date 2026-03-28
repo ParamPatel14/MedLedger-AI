@@ -190,3 +190,108 @@ def test_low_confidence_rule_not_used_for_validation(client, tmp_path: Path):
     payload = res2.json()
     assert payload["valid"] is False
     assert payload["reason"] == "no_high_confidence_rule"
+
+
+def test_semantic_extraction_stores_rule(client, tmp_path: Path):
+    extraction_path = tmp_path / "rule_extraction_semantic.json"
+    _write_json(
+        extraction_path,
+        """{
+  "version": "semantic-test",
+  "rule_types": { "comparators": { "limit": "max" } },
+  "semantic": {
+    "enabled": true,
+    "amount_regex": "(?i)(?:₹|INR|RS\\\\.?)?\\\\s*([0-9][0-9,\\\\.]*\\\\s*(?:k|K)?)",
+    "min_keyword_hits": 1,
+    "base_confidence": 0.8,
+    "rule_types": [
+      { "id": "limit", "rule_type": "limit", "keywords": ["limit", "maximum", "max"], "confidence_bonus": 0.1 }
+    ],
+    "categories": [
+      { "id": "room_rent", "category": "room_rent", "keywords": ["room rent", "room charges"], "unit": "INR/day", "confidence_bonus": 0.05, "conditions": { "scope": "general" } }
+    ]
+  },
+  "patterns": []
+}""",
+    )
+    os.environ["RULE_EXTRACTION_PATH"] = str(extraction_path)
+    _reset_rule_config_caches()
+
+    res1 = client.post("/rules/ingest/email", json={"tpa_name": "ACME", "text": "Policy: Room charges maximum INR 7K per day."})
+    assert res1.status_code == 200
+
+    res2 = client.post("/validate_rule", json={"tpa": "ACME", "category": "room_rent", "value": 8000, "rule_type": "limit"})
+    assert res2.status_code == 200
+    payload = res2.json()
+    assert payload["matched_rule"] is not None
+    assert float(payload["matched_rule"]["value"]) == 7000.0
+
+
+def test_rule_monitoring_endpoints_summary_updates_conflicts(client, tmp_path: Path):
+    confidence_path = tmp_path / "rule_confidence_conflicts.json"
+    _write_json(
+        confidence_path,
+        """{
+  "version": "conflict-test",
+  "default_source_weight": 1.0,
+  "source_weights": { "email": 1.0 },
+  "min_store_confidence": 0.2,
+  "min_use_confidence": 0.7,
+  "conflict": { "min_confidence": 0.7, "condition_exclusion_keys": ["scope"] }
+}""",
+    )
+    os.environ["RULE_CONFIDENCE_PATH"] = str(confidence_path)
+
+    extraction_path = tmp_path / "rule_extraction_conflicts.json"
+    _write_json(
+        extraction_path,
+        """{
+  "version": "conflict-test",
+  "rule_types": { "comparators": { "limit": "max" } },
+  "patterns": [
+    {
+      "id": "broad",
+      "enabled": true,
+      "rule_type": "limit",
+      "category": "room_rent",
+      "tpa_regex": ".*",
+      "regex": "(?i)room\\\\s*rent[^\\\\d]{0,60}([0-9][0-9,\\\\.]*\\\\s*(?:k|K)?)\\\\s*(?:/(?:day|night)|per\\\\s*day|per\\\\s*night)?",
+      "unit": "INR/day",
+      "base_confidence": 0.95,
+      "conditions": {}
+    },
+    {
+      "id": "icu",
+      "enabled": true,
+      "rule_type": "limit",
+      "category": "room_rent",
+      "tpa_regex": ".*",
+      "regex": "(?i)room\\\\s*rent[^\\\\d]{0,60}([0-9][0-9,\\\\.]*\\\\s*(?:k|K)?)\\\\s*(?:/(?:day|night)|per\\\\s*day|per\\\\s*night)?",
+      "unit": "INR/day",
+      "base_confidence": 0.95,
+      "conditions": { "scope": "icu" }
+    }
+  ]
+}""",
+    )
+    os.environ["RULE_EXTRACTION_PATH"] = str(extraction_path)
+    _reset_rule_config_caches()
+
+    res1 = client.post("/rules/ingest/email", json={"tpa_name": "ACME", "text": "Room rent limit is 5K per day."})
+    assert res1.status_code == 200
+    res2 = client.post("/rules/ingest/email", json={"tpa_name": "ACME", "text": "Room rent limit is 6K per day."})
+    assert res2.status_code == 200
+
+    s = client.get("/rules/summary")
+    assert s.status_code == 200
+    assert int(s.json().get("total_active") or 0) >= 1
+
+    u = client.get("/rules/updates", params={"limit": 10})
+    assert u.status_code == 200
+    items = u.json().get("items") or []
+    assert isinstance(items, list)
+
+    c = client.get("/rules/conflicts", params={"limit_groups": 10})
+    assert c.status_code == 200
+    conflicts = c.json().get("items") or []
+    assert any(x.get("tpa_name") == "ACME" and x.get("category") == "room_rent" for x in conflicts)

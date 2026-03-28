@@ -62,6 +62,40 @@ class RuleHistoryOut(BaseModel):
     events: List[RuleHistoryEventOut] = Field(default_factory=list)
 
 
+class RuleSummaryOut(BaseModel):
+    total_active: int = 0
+    by_source: Dict[str, int] = Field(default_factory=dict)
+    by_tpa: Dict[str, int] = Field(default_factory=dict)
+
+
+class RuleUpdateOut(BaseModel):
+    id: int
+    rule_id: str
+    from_version: int
+    to_version: int
+    diff: Dict[str, Any] = Field(default_factory=dict)
+    changed_at: datetime
+    tpa_name: str = ""
+    category: str = ""
+    rule_type: str = ""
+
+
+class RuleUpdatesOut(BaseModel):
+    items: List[RuleUpdateOut] = Field(default_factory=list)
+
+
+class RuleConflictGroupOut(BaseModel):
+    tpa_name: str
+    category: str
+    rule_type: str
+    reason: str = ""
+    rules: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class RuleConflictsOut(BaseModel):
+    items: List[RuleConflictGroupOut] = Field(default_factory=list)
+
+
 class ValidateRuleIn(BaseModel):
     tpa: str
     category: str

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import Extract from './pages/Extract'
 import Denials from './pages/Denials'
+import Rules from './pages/Rules'
 import './App.css'
 
 function App() {
@@ -18,6 +19,7 @@ function App() {
 
   const isExtract = path === '/extract'
   const isDenials = path === '/denials'
+  const isRules = path === '/rules'
   return (
     <div className="appShell">
       <header className="topBar">
@@ -36,6 +38,16 @@ function App() {
                 Features
               </a>
               <a
+                className="navLink"
+                href="/rules"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/rules')
+                }}
+              >
+                Rules
+              </a>
+              <a
                 className="navLink ctaLink"
                 href="/extract"
                 onClick={(e) => {
@@ -48,6 +60,40 @@ function App() {
             </nav>
           )}
           {(isExtract || isDenials) && (
+            <nav className="nav">
+              <a
+                className="navLink"
+                href="/rules"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/rules')
+                }}
+              >
+                Rules
+              </a>
+              <a
+                className="navLink"
+                href="/denials"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/denials')
+                }}
+              >
+                Denials
+              </a>
+              <a
+                className="navLink"
+                href="/"
+                onClick={(e) => {
+                  e.preventDefault()
+                  navigate('/')
+                }}
+              >
+                Home
+              </a>
+            </nav>
+          )}
+          {isRules && (
             <nav className="nav">
               <a
                 className="navLink"
@@ -172,6 +218,7 @@ function App() {
         )}
         {isExtract && <Extract />}
         {isDenials && <Denials />}
+        {isRules && <Rules />}
       </main>
 
       <footer className="footer mt-auto py-8">

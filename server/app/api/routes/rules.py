@@ -10,6 +10,7 @@ from app.db.session import get_db
 from app.layers.rule_intelligence_layer.service import RuleIntelligenceService
 from app.models.rule import InsuranceRule, InsuranceRuleHistory
 from app.schemas.rules import (
+    RuleConflictsOut,
     RuleHistoryEventOut,
     RuleHistoryOut,
     RuleIngestEmailIn,
@@ -17,7 +18,10 @@ from app.schemas.rules import (
     RuleIngestOut,
     RuleListOut,
     RuleOut,
+    RuleSummaryOut,
     RuleIngestWebIn,
+    RuleUpdatesOut,
+    RuleUpdateOut,
     ValidateRuleIn,
     ValidateRuleOut,
 )
@@ -127,3 +131,21 @@ def rule_history(rule_id: str, db: Session = Depends(get_db)) -> RuleHistoryOut:
             for e in events
         ],
     )
+
+
+@router.get("/rules/summary", response_model=RuleSummaryOut)
+def rule_summary(db: Session = Depends(get_db)) -> RuleSummaryOut:
+    out = _svc.summary(db)
+    return RuleSummaryOut(**out)
+
+
+@router.get("/rules/updates", response_model=RuleUpdatesOut)
+def rule_updates(limit: int = 25, db: Session = Depends(get_db)) -> RuleUpdatesOut:
+    items = _svc.recent_updates(db, limit=int(limit or 25))
+    return RuleUpdatesOut(items=[RuleUpdateOut(**x) for x in items])
+
+
+@router.get("/rules/conflicts", response_model=RuleConflictsOut)
+def rule_conflicts(limit_groups: int = 25, db: Session = Depends(get_db)) -> RuleConflictsOut:
+    items = _svc.conflicts(db, limit_groups=int(limit_groups or 25))
+    return RuleConflictsOut(items=items)

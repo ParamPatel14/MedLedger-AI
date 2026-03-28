@@ -80,3 +80,45 @@ export async function getDenialDashboard() {
   if (!res.ok) throw new Error(`Denial dashboard failed (${res.status})`)
   return res.json()
 }
+
+export async function listRules({ tpa = '', category = '', ruleType = '', active = true, limit = 50, offset = 0 } = {}) {
+  const params = new URLSearchParams()
+  if (tpa) params.set('tpa', tpa)
+  if (category) params.set('category', category)
+  if (ruleType) params.set('rule_type', ruleType)
+  params.set('active', String(Boolean(active)))
+  params.set('limit', String(limit))
+  params.set('offset', String(offset))
+
+  const res = await fetch(`/api/rules?${params.toString()}`)
+  if (!res.ok) throw new Error(`Rule list failed (${res.status})`)
+  return res.json()
+}
+
+export async function getRuleHistory(ruleId) {
+  const res = await fetch(`/api/rules/${encodeURIComponent(ruleId)}/history`)
+  if (!res.ok) throw new Error(`Rule history failed (${res.status})`)
+  return res.json()
+}
+
+export async function getRuleSummary() {
+  const res = await fetch('/api/rules/summary')
+  if (!res.ok) throw new Error(`Rule summary failed (${res.status})`)
+  return res.json()
+}
+
+export async function getRuleUpdates({ limit = 25 } = {}) {
+  const params = new URLSearchParams()
+  params.set('limit', String(limit))
+  const res = await fetch(`/api/rules/updates?${params.toString()}`)
+  if (!res.ok) throw new Error(`Rule updates failed (${res.status})`)
+  return res.json()
+}
+
+export async function getRuleConflicts({ limitGroups = 25 } = {}) {
+  const params = new URLSearchParams()
+  params.set('limit_groups', String(limitGroups))
+  const res = await fetch(`/api/rules/conflicts?${params.toString()}`)
+  if (!res.ok) throw new Error(`Rule conflicts failed (${res.status})`)
+  return res.json()
+}

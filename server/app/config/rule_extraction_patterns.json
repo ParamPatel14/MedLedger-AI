@@ -16,6 +16,21 @@
       "minimum": "min"
     }
   },
+  "semantic": {
+    "enabled": true,
+    "amount_regex": "(?i)(?:₹|INR|RS\\.?|Rupees)?\\s*([0-9][0-9,\\.]*\\s*(?:k|K|lakh|L)?)",
+    "min_keyword_hits": 1,
+    "excerpt_context": 120,
+    "base_confidence": 0.55,
+    "per_keyword_bonus": 0.06,
+    "max_keyword_bonus": 0.24,
+    "rule_types": [
+      { "id": "limit", "rule_type": "limit", "keywords": ["limit", "maximum", "max", "up to", "not exceed"], "confidence_bonus": 0.08 }
+    ],
+    "categories": [
+      { "id": "room_rent", "category": "room_rent", "keywords": ["room rent", "room charges"], "unit": "INR/day", "confidence_bonus": 0.06, "conditions": { "scope": "general" } }
+    ]
+  },
   "patterns": [
     {
       "id": "room_rent_limit_generic",
