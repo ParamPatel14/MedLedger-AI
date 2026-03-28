@@ -365,7 +365,21 @@ def _vapi_cfg() -> Dict[str, str]:
         "base_url": str((os.getenv("VAPI_BASE_URL") or "").strip() or "https://api.vapi.ai"),
         "assistant_id": str((os.getenv("VAPI_ASSISTANT_ID") or "").strip()),
         "phone_number_id": str((os.getenv("VAPI_PHONE_NUMBER_ID") or "").strip()),
+        "webhook_url": str(_vapi_webhook_url() or "").strip(),
     }
+
+
+def _vapi_webhook_url() -> str:
+    explicit = str((os.getenv("VAPI_WEBHOOK_URL") or "").strip())
+    if explicit:
+        return explicit
+    base = str((os.getenv("PUBLIC_BASE_URL") or "").strip())
+    if not base:
+        base = str((os.getenv("NGROK_URL") or "").strip())
+    base = base.rstrip("/")
+    if not base:
+        return ""
+    return base + "/denials/vapi/webhook"
 
 
 @router.get("/denials/vapi/status")
@@ -377,6 +391,8 @@ def vapi_status() -> Dict[str, Any]:
             "has_api_key": bool(cfg["api_key"]),
             "has_assistant_id": bool(cfg["assistant_id"]),
             "has_phone_number_id": bool(cfg["phone_number_id"]),
+            "has_webhook_url": bool(cfg.get("webhook_url")),
+            "webhook_url": cfg.get("webhook_url") or "",
             "base_url": cfg["base_url"],
         },
     }
@@ -617,6 +633,8 @@ def vapi_start_outbound_call(payload: VapiOutboundCallIn, db: Session = Depends(
         "customer": {"number": insurer_number},
         "assistantOverrides": {"variableValues": merged_vars},
     }
+    if cfg.get("webhook_url"):
+        call_payload["webhookUrl"] = cfg["webhook_url"]
 
     try:
         created = _vapi_post_json("/call", call_payload)

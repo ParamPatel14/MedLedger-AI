@@ -71,9 +71,9 @@ flowchart TD
   E1 --> F[GovernanceLayer policy and guardrails]
   F --> G[ExplainabilityService templates and trace]
 
-  G --> H[ExplainabilityAuditTrail]
-  F --> I[GovernanceAuditLog]
-  C1 --> J[SvmAuditLog]
+  G --> H[(ExplainabilityAuditTrail)]
+  F --> I[(GovernanceAuditLog)]
+  C1 --> J[(SvmAuditLog)]
   D1 --> J
   E1 --> J
 
@@ -85,13 +85,13 @@ flowchart TD
 ```mermaid
 flowchart TD
   A[Claim Status Update] --> B[DenialEvent]
-  B --> C[DenialManagementAgent LangGraph]
+  B --> C[DenialManagementAgent (LangGraph)]
   C --> D[DenialReasonEngine]
   C --> E[RootCauseEngine]
   C --> F[CorrectionEngine]
   C --> G[ResubmissionEngine]
-  C --> H[LearningService outcomes]
-  C --> I[Claims and Denials tables]
+  C --> H[LearningService (outcomes)]
+  C --> I[(Claims/Denial tables)]
   I --> J[Denial Dashboard API]
   J --> K[Business Impact UI]
 ```
