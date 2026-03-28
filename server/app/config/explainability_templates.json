@@ -1,0 +1,46 @@
+{
+  "version": "1.0",
+  "templates": {
+    "clinical.diagnosis_found": {
+      "enabled": true,
+      "template": "Diagnosis '{diagnosis}' identified from clinical text"
+    },
+    "clinical.procedure_found": {
+      "enabled": true,
+      "template": "Procedure '{procedure}' identified from clinical text"
+    },
+    "coding.icd_assigned": {
+      "enabled": true,
+      "template": "ICD {code} assigned based on semantic match to '{source_text}'"
+    },
+    "rule.payer_pass": {
+      "enabled": true,
+      "template": "Payer rule validation passed"
+    },
+    "rule.payer_issue": {
+      "enabled": true,
+      "template": "Payer rule validation flagged '{issue_type}' severity={severity}"
+    },
+    "svm.stage_result": {
+      "enabled": true,
+      "template": "Verification stage '{stage}' status={status} source_alignment={source_alignment} consistency={consistency} reasonability={reasonability}"
+    },
+    "svm.overall_pass": {
+      "enabled": true,
+      "template": "Verification passed with source_alignment={source_alignment} consistency={consistency} reasonability={reasonability}"
+    },
+    "svm.overall_fail": {
+      "enabled": true,
+      "template": "Verification failed with source_alignment={source_alignment} consistency={consistency} reasonability={reasonability}"
+    },
+    "governance.final_decision": {
+      "enabled": true,
+      "template": "Final decision {decision} because {reason}"
+    },
+    "denial.refusal": {
+      "enabled": true,
+      "template": "Request blocked because {message}"
+    }
+  }
+}
+

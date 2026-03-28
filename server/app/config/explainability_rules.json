@@ -1,0 +1,134 @@
+{
+  "version": "1.0",
+  "rules": [
+    {
+      "id": "clinical_diagnosis",
+      "enabled": true,
+      "type": "clinical",
+      "when": { "kind": "path_len_gte", "path": "clinical.diagnosis[*]", "value": 1 },
+      "emit": {
+        "template_id": "clinical.diagnosis_found",
+        "items_path": "clinical.diagnosis[*]",
+        "params": { "diagnosis": "item" },
+        "confidence_path": "clinical.confidence"
+      }
+    },
+    {
+      "id": "clinical_procedure",
+      "enabled": true,
+      "type": "clinical",
+      "when": { "kind": "path_len_gte", "path": "clinical.procedures[*]", "value": 1 },
+      "emit": {
+        "template_id": "clinical.procedure_found",
+        "items_path": "clinical.procedures[*]",
+        "params": { "procedure": "item" },
+        "confidence_path": "clinical.confidence"
+      }
+    },
+    {
+      "id": "coding_icd_assigned",
+      "enabled": true,
+      "type": "coding",
+      "when": { "kind": "path_len_gte", "path": "coding.icd_codes[*]", "value": 1 },
+      "emit": {
+        "template_id": "coding.icd_assigned",
+        "items_path": "coding.icd_codes[*]",
+        "params": { "code": "item.code", "source_text": "item.source_text" },
+        "confidence_path": "coding.confidence"
+      }
+    },
+    {
+      "id": "rule_validation_passed",
+      "enabled": true,
+      "type": "rule",
+      "when": { "kind": "path_any_equals", "path": "validation.is_valid", "value": true },
+      "emit": {
+        "template_id": "rule.payer_pass",
+        "params": {},
+        "confidence_path": "validation.confidence"
+      }
+    },
+    {
+      "id": "rule_validation_issues",
+      "enabled": true,
+      "type": "rule",
+      "when": { "kind": "path_len_gte", "path": "validation.issues[*]", "value": 1 },
+      "emit": {
+        "template_id": "rule.payer_issue",
+        "items_path": "validation.issues[*]",
+        "params": { "issue_type": "item.type", "severity": "item.severity" },
+        "confidence_path": "validation.confidence"
+      }
+    },
+    {
+      "id": "svm_stage_results",
+      "enabled": true,
+      "type": "svm",
+      "when": { "kind": "path_len_gte", "path": "svm_stages[*]", "value": 1 },
+      "emit": {
+        "template_id": "svm.stage_result",
+        "items_path": "svm_stages[*]",
+        "params": {
+          "stage": "item.stage",
+          "status": "item.status",
+          "source_alignment": "item.scores.source_alignment",
+          "consistency": "item.scores.consistency",
+          "reasonability": "item.scores.reasonability"
+        },
+        "confidence_path": "item.confidence"
+      }
+    },
+    {
+      "id": "svm_overall_pass",
+      "enabled": true,
+      "type": "svm_verification",
+      "when": { "kind": "path_any_equals", "path": "svm_overall.status", "value": "pass" },
+      "emit": {
+        "template_id": "svm.overall_pass",
+        "params": {
+          "source_alignment": "svm_overall.details.source_alignment",
+          "consistency": "svm_overall.details.consistency",
+          "reasonability": "svm_overall.details.reasonability"
+        },
+        "confidence_path": "svm_overall.confidence"
+      }
+    },
+    {
+      "id": "svm_overall_fail",
+      "enabled": true,
+      "type": "svm_verification",
+      "when": { "kind": "path_any_equals", "path": "svm_overall.status", "value": "fail" },
+      "emit": {
+        "template_id": "svm.overall_fail",
+        "params": {
+          "source_alignment": "svm_overall.details.source_alignment",
+          "consistency": "svm_overall.details.consistency",
+          "reasonability": "svm_overall.details.reasonability"
+        },
+        "confidence_path": "svm_overall.confidence"
+      }
+    },
+    {
+      "id": "governance_decision",
+      "enabled": true,
+      "type": "decision",
+      "when": { "kind": "path_len_gte", "path": "governance.decision", "value": 1 },
+      "emit": {
+        "template_id": "governance.final_decision",
+        "params": { "decision": "governance.decision", "reason": "governance.reason" },
+        "confidence_path": "governance.confidence"
+      }
+    },
+    {
+      "id": "denial_refusal",
+      "enabled": true,
+      "type": "denial",
+      "when": { "kind": "path_any_equals", "path": "governance.refusal.status", "value": "refused" },
+      "emit": {
+        "template_id": "denial.refusal",
+        "params": { "message": "governance.refusal.message" },
+        "confidence_path": "governance.confidence"
+      }
+    }
+  ]
+}

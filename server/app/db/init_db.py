@@ -9,6 +9,7 @@ from app.models.workflow import AgentOutput, WorkflowRecord, WorkflowState
 from app.models.svm import SvmAuditLog
 from app.models.governance import GovernanceAuditLog
 from app.models.denial import Claim, CorrectionApplied, DenialEvent, LearningLog, Resubmission
+from app.models.explainability import ExplainabilityAuditTrail
 from app.models.rule import InsuranceRule, InsuranceRuleHistory
 
 

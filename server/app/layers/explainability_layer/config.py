@@ -33,7 +33,7 @@ def _default_path(env_key: str, filename: str) -> Path:
     configured = (os.getenv(env_key) or "").strip()
     if configured:
         return Path(configured)
-    return Path.cwd() / "app" / "config" / filename
+    return Path(__file__).resolve().parents[2] / "config" / filename
 
 
 def _load_cached(path: Path, previous: Optional[ExplainabilityConfigStore]) -> Tuple[ExplainabilityConfigStore, Dict[str, Any]]:
@@ -74,4 +74,3 @@ def get_explainability_rules() -> Dict[str, Any]:
     store, cfg = _load_cached(path, _RULES_CACHE)
     _RULES_CACHE = store
     return cfg
-

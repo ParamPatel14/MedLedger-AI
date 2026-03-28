@@ -82,3 +82,48 @@ class ProcessTraceOut(BaseModel):
     status: str
     svm: Dict[str, SvmResultOut] = Field(default_factory=dict)
     governance: GovernanceOut | None = None
+
+
+class ExplanationOut(BaseModel):
+    type: str
+    explanation: str
+    confidence: float
+
+
+class DecisionTraceStepOut(BaseModel):
+    stage: str
+    status: str
+    timestamp: str | None = None
+
+
+class DecisionTraceOut(BaseModel):
+    trace_id: str
+    steps: List[DecisionTraceStepOut] = Field(default_factory=list)
+
+
+class ProcessExplainOut(BaseModel):
+    decision: str
+    confidence: float
+    explanations: List[ExplanationOut] = Field(default_factory=list)
+    trace: DecisionTraceOut
+    audit_id: str
+
+
+class ExplainabilityAuditOut(BaseModel):
+    audit_id: str
+    record_id: str
+    trace_id: str
+    decision: str
+    confidence: float
+    raw_input: Dict[str, Any] = Field(default_factory=dict)
+    agent_outputs: Dict[str, Any] = Field(default_factory=dict)
+    svm_results: Dict[str, Any] = Field(default_factory=dict)
+    policy: Dict[str, Any] = Field(default_factory=dict)
+    final: Dict[str, Any] = Field(default_factory=dict)
+    explanations: List[Dict[str, Any]] = Field(default_factory=list)
+    trace: Dict[str, Any] = Field(default_factory=dict)
+    confidence_breakdown: Dict[str, Any] = Field(default_factory=dict)
+    formatting_version: str = ""
+    rules_version: str = ""
+    human_summary: str = ""
+    created_at: str | None = None
