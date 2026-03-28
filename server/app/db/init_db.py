@@ -9,6 +9,7 @@ from app.models.workflow import AgentOutput, WorkflowRecord, WorkflowState
 from app.models.svm import SvmAuditLog
 from app.models.governance import GovernanceAuditLog
 from app.models.denial import Claim, CorrectionApplied, DenialEvent, LearningLog, Resubmission
+from app.models.rule import InsuranceRule, InsuranceRuleHistory
 
 
 def init_db() -> None:
@@ -44,5 +45,14 @@ def init_db() -> None:
                         conn.execute(text("ALTER TABLE denial_events ADD COLUMN IF NOT EXISTS source_meta JSONB DEFAULT '{}'::jsonb"))
                     else:
                         conn.execute(text("ALTER TABLE denial_events ADD COLUMN source_meta TEXT"))
+        if "insurance_rules" in set(insp.get_table_names()):
+            cols = {c.get("name") for c in insp.get_columns("insurance_rules")}
+            if "key_hash" not in cols:
+                with engine.begin() as conn:
+                    dialect = engine.dialect.name
+                    if dialect == "postgresql":
+                        conn.execute(text("ALTER TABLE insurance_rules ADD COLUMN IF NOT EXISTS key_hash VARCHAR(64) DEFAULT ''"))
+                    else:
+                        conn.execute(text("ALTER TABLE insurance_rules ADD COLUMN key_hash VARCHAR(64)"))
     except Exception:
         return
