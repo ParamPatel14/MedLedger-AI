@@ -85,13 +85,13 @@ flowchart TD
 ```mermaid
 flowchart TD
   A[Claim Status Update] --> B[DenialEvent]
-  B --> C[DenialManagementAgent (LangGraph)]
+  B --> C[DenialManagementAgent - LangGraph]
   C --> D[DenialReasonEngine]
   C --> E[RootCauseEngine]
   C --> F[CorrectionEngine]
   C --> G[ResubmissionEngine]
-  C --> H[LearningService (outcomes)]
-  C --> I[(Claims/Denial tables)]
+  C --> H[LearningService outcomes]
+  C --> I[(Claims and Denials tables)]
   I --> J[Denial Dashboard API]
   J --> K[Business Impact UI]
 ```
