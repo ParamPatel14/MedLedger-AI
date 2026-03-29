@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -128,3 +128,28 @@ class ExplainabilityAuditOut(BaseModel):
     rules_version: str = ""
     human_summary: str = ""
     created_at: str | None = None
+
+
+class OneClickStartIn(BaseModel):
+    text: str = Field(min_length=1)
+    insurer_number: Optional[str] = None
+    auto_call_if_needed: bool = True
+
+
+class OneClickStartOut(BaseModel):
+    run_id: str
+    status: str
+    step: str
+
+
+class OneClickStatusOut(BaseModel):
+    run_id: str
+    status: str
+    step: str
+    record_id: Optional[str] = None
+    claim_id: Optional[str] = None
+    denial_event_id: Optional[int] = None
+    call_id: Optional[str] = None
+    decision: Optional[str] = None
+    output: Dict[str, Any] = Field(default_factory=dict)
+    events: List[Dict[str, Any]] = Field(default_factory=list)
