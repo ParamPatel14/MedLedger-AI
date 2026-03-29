@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Activity, ChevronDown, ChevronUp, GitBranch, Play, RotateCcw, ShieldCheck } from 'lucide-react'
 import { runAgentWorkflowTrace } from '../services/api'
+import { Button } from './ui/button'
 
 function formatScore(value) {
   if (value === null || value === undefined) return '0.00'
@@ -8,37 +10,40 @@ function formatScore(value) {
   return n.toFixed(2)
 }
 
-function pillColor(status) {
+/* ── Inline style helpers (replaces Tailwind color classes) ── */
+function pillStyle(status) {
   const s = String(status || '').toLowerCase()
-  if (s === 'ok') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
-  if (s === 'skipped') return 'bg-slate-50 text-slate-700 border-slate-200'
-  return 'bg-rose-50 text-rose-700 border-rose-200'
+  if (s === 'ok') return { background: '#D1FAE5', color: '#065F46', border: '1px solid #A7F3D0' }
+  if (s === 'skipped') return { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)' }
+  return { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }
 }
 
-function severityColor(severity) {
+function severityStyle(severity) {
   const s = String(severity || '').toLowerCase()
-  if (s === 'critical') return 'bg-rose-50 text-rose-700 border-rose-200'
-  if (s === 'error') return 'bg-orange-50 text-orange-700 border-orange-200'
-  if (s === 'warning') return 'bg-amber-50 text-amber-800 border-amber-200'
-  return 'bg-slate-50 text-slate-700 border-slate-200'
+  if (s === 'critical') return { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }
+  if (s === 'error') return { background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }
+  if (s === 'warning') return { background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }
+  return { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)' }
 }
 
-function svmStatusColor(status) {
+function svmStyle(status) {
   const s = String(status || '').toLowerCase()
-  if (s === 'pass') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
-  if (s === 'review') return 'bg-amber-50 text-amber-800 border-amber-200'
-  if (s === 'escalated') return 'bg-rose-50 text-rose-700 border-rose-200'
-  return 'bg-slate-50 text-slate-700 border-slate-200'
+  if (s === 'pass') return { background: '#D1FAE5', color: '#065F46', border: '1px solid #A7F3D0' }
+  if (s === 'review') return { background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }
+  if (s === 'escalated') return { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }
+  return { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)' }
 }
 
-function decisionColor(decision) {
+function decisionStyle(decision) {
   const d = String(decision || '').toUpperCase()
-  if (d === 'APPROVE') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
-  if (d === 'WARN') return 'bg-amber-50 text-amber-800 border-amber-200'
-  if (d === 'ESCALATE') return 'bg-orange-50 text-orange-700 border-orange-200'
-  if (d === 'BLOCK') return 'bg-rose-50 text-rose-700 border-rose-200'
-  return 'bg-slate-50 text-slate-700 border-slate-200'
+  if (d === 'APPROVE') return { background: '#D1FAE5', color: '#065F46', border: '1px solid #A7F3D0' }
+  if (d === 'WARN') return { background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A' }
+  if (d === 'ESCALATE') return { background: '#FFF7ED', color: '#C2410C', border: '1px solid #FED7AA' }
+  if (d === 'BLOCK') return { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }
+  return { background: 'var(--surface-2)', color: 'var(--text-muted)', border: '1px solid var(--border)' }
 }
+
+const pillBase = { display: 'inline-flex', alignItems: 'center', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600 }
 
 function normalizeIssues(items) {
   const list = Array.isArray(items) ? items : []
@@ -81,21 +86,37 @@ function stageDecisionLabel(status) {
   return '—'
 }
 
-function renderTags(items, className) {
+function TagList({ items, style: tagStyle }) {
   const list = Array.isArray(items) ? items : []
-  if (!list.length) {
-    return <div className="text-xs text-slate-400">None</div>
-  }
+  if (!list.length) return <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>None</div>
   return (
-    <div className="flex flex-wrap gap-2">
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
       {list.map((item) => (
-        <span
-          key={String(item)}
-          className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-medium ${className}`}
-        >
+        <span key={String(item)} style={{ ...pillBase, ...tagStyle }}>
           {String(item)}
         </span>
       ))}
+    </div>
+  )
+}
+
+function IssueCard({ issue, i }) {
+  const style = severityStyle(issue?.severity)
+  return (
+    <div key={`${issue?.policy_id || issue?.detector_id || issue?.type || 'issue'}-${i}`}
+      style={{ ...style, borderRadius: 6, padding: '8px 12px', fontSize: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+        <span style={{ fontWeight: 600 }}>{String(issue?.type || 'issue')}</span>
+        <span style={{ fontSize: 11 }}>{String(issue?.severity || 'warning')}</span>
+      </div>
+      <div style={{ marginTop: 4 }}>{String(issue?.message || '')}</div>
+      {(issue?.policy_id || issue?.detector_id) && (
+        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.75 }}>
+          {issue?.policy_id ? `policy: ${String(issue.policy_id)}` : ''}
+          {issue?.policy_id && issue?.detector_id ? ' \u2022 ' : ''}
+          {issue?.detector_id ? `detector: ${String(issue.detector_id)}` : ''}
+        </div>
+      )}
     </div>
   )
 }
@@ -111,6 +132,7 @@ export default function AgentWorkflowPanel({
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
   const [result, setResult] = useState(externalResult)
+  const [rawOpen, setRawOpen] = useState(false)
 
   useEffect(() => {
     if (!hideControls) return
@@ -151,808 +173,519 @@ export default function AgentWorkflowPanel({
     return Array.isArray(list) ? list : []
   }, [coding])
 
-  const governanceIssues = useMemo(() => normalizeIssues(governance?.issues), [
-    governance,
-  ])
-  const policyTriggered = useMemo(() => {
-    return uniqStrings(
-      governanceIssues
-        .map((x) => x?.policy_id)
-        .filter((x) => x !== null && x !== undefined),
-    )
-  }, [governanceIssues])
-  const guardrailDetectors = useMemo(() => {
-    return uniqStrings(
-      governanceIssues
-        .map((x) => x?.detector_id)
-        .filter((x) => x !== null && x !== undefined),
-    )
-  }, [governanceIssues])
-  const govCounts = useMemo(
-    () => issueCounts(governanceIssues),
-    [governanceIssues],
-  )
+  const governanceIssues = useMemo(() => normalizeIssues(governance?.issues), [governance])
+  const policyTriggered = useMemo(() => uniqStrings(governanceIssues.map((x) => x?.policy_id).filter((x) => x !== null && x !== undefined)), [governanceIssues])
+  const guardrailDetectors = useMemo(() => uniqStrings(governanceIssues.map((x) => x?.detector_id).filter((x) => x !== null && x !== undefined)), [governanceIssues])
+  const govCounts = useMemo(() => issueCounts(governanceIssues), [governanceIssues])
 
   const decisionTimeline = useMemo(() => {
     const rows = []
-    rows.push({
-      step: 'Clinical',
-      score: clinical?.confidence,
-      decision: stageDecisionLabel(svm?.svm_after_clinical?.status),
-      meta: svm?.svm_after_clinical?.status ? 'SVM after clinical' : '',
-    })
-    rows.push({
-      step: 'Coding',
-      score: coding?.confidence,
-      decision: stageDecisionLabel(svm?.svm_after_coding?.status),
-      meta: svm?.svm_after_coding?.status ? 'SVM after coding' : '',
-    })
-    rows.push({
-      step: 'Rule',
-      score: payer?.confidence,
-      decision: stageDecisionLabel(svm?.svm_after_rules?.status),
-      meta: payer ? (payer.is_valid ? 'Valid' : 'Invalid') : '',
-    })
+    rows.push({ step: 'Clinical', score: clinical?.confidence, decision: stageDecisionLabel(svm?.svm_after_clinical?.status), meta: svm?.svm_after_clinical?.status ? 'SVM after clinical' : '' })
+    rows.push({ step: 'Coding', score: coding?.confidence, decision: stageDecisionLabel(svm?.svm_after_coding?.status), meta: svm?.svm_after_coding?.status ? 'SVM after coding' : '' })
+    rows.push({ step: 'Rule', score: payer?.confidence, decision: stageDecisionLabel(svm?.svm_after_rules?.status), meta: payer ? (payer.is_valid ? 'Valid' : 'Invalid') : '' })
     rows.push({
       step: 'Policy',
       score: governance ? governanceIssues.length : null,
-      decision:
-        governanceIssues.length > 0
-          ? String(
-              governanceIssues.some((x) =>
-                String(x?.severity || '').toLowerCase().includes('critical'),
-              )
-                ? 'VIOLATION'
-                : 'FLAGGED',
-            )
-          : governance
-            ? 'CLEAR'
-            : '—',
-      meta:
-        policyTriggered.length || guardrailDetectors.length
-          ? `${policyTriggered.length} policies, ${guardrailDetectors.length} detectors`
-          : '',
+      decision: governanceIssues.length > 0 ? String(governanceIssues.some((x) => String(x?.severity || '').toLowerCase().includes('critical')) ? 'VIOLATION' : 'FLAGGED') : governance ? 'CLEAR' : '—',
+      meta: policyTriggered.length || guardrailDetectors.length ? `${policyTriggered.length} policies, ${guardrailDetectors.length} detectors` : '',
     })
-    rows.push({
-      step: 'Decision',
-      score: governance?.confidence,
-      decision: String(governance?.decision || '—').toUpperCase(),
-      meta: governance?.audit_id ? `Audit ${String(governance.audit_id).slice(0, 8)}` : '',
-    })
+    rows.push({ step: 'Decision', score: governance?.confidence, decision: String(governance?.decision || '—').toUpperCase(), meta: governance?.audit_id ? `Audit ${String(governance.audit_id).slice(0, 8)}` : '' })
     return rows
-  }, [
-    clinical,
-    coding,
-    payer,
-    svm,
-    governance,
-    governanceIssues,
-    policyTriggered,
-    guardrailDetectors,
-  ])
+  }, [clinical, coding, payer, svm, governance, governanceIssues, policyTriggered, guardrailDetectors])
 
   const alertItems = useMemo(() => {
     const items = []
-    if (governance?.refusal?.status === 'refused') {
-      items.push({
-        kind: 'refusal',
-        severity: 'critical',
-        title: 'Refusal',
-        message: governance?.refusal?.message || 'Insufficient information. Cannot proceed.',
-      })
-    }
-    if (governance?.escalation?.status === 'escalated') {
-      items.push({
-        kind: 'escalation',
-        severity: 'warning',
-        title: 'Escalation',
-        message: governance?.escalation?.reason || 'Escalated to human review',
-      })
-    }
-    for (const it of governanceIssues.slice(0, 10)) {
-      items.push({
-        kind: it?.type || 'issue',
-        severity: it?.severity || 'warning',
-        title: String(it?.type || 'issue'),
-        message: String(it?.message || ''),
-      })
-    }
+    if (governance?.refusal?.status === 'refused') items.push({ kind: 'refusal', severity: 'critical', title: 'Refusal', message: governance?.refusal?.message || 'Insufficient information. Cannot proceed.' })
+    if (governance?.escalation?.status === 'escalated') items.push({ kind: 'escalation', severity: 'warning', title: 'Escalation', message: governance?.escalation?.reason || 'Escalated to human review' })
+    for (const it of governanceIssues.slice(0, 10)) items.push({ kind: it?.type || 'issue', severity: it?.severity || 'warning', title: String(it?.type || 'issue'), message: String(it?.message || '') })
     return items
   }, [governance, governanceIssues])
 
   return (
-    <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="panel">
+      <div className="panelHead">
         <div>
-          <div className="text-base font-semibold text-slate-800">
-            {String(title || 'Agentic Coding Workflow')}
-          </div>
-          <p className="text-xs text-slate-500">
-            Clinical → SVM → Coding → SVM → Rule → SVM → Governance, with guardrails and audit.
-          </p>
+          <div className="panelHeadTitle">{String(title || 'Agentic Coding Workflow')}</div>
+          <div className="panelHeadSub">Clinical &rarr; SVM &rarr; Coding &rarr; SVM &rarr; Rule &rarr; SVM &rarr; Governance, with guardrails and audit.</div>
         </div>
         {result?.record_id && (
-          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 20, padding: '3px 10px' }}>
             Record {String(result.record_id).slice(0, 8)}
           </span>
         )}
       </div>
+      <div className="panelBody">
 
-      <div className={`mt-4 grid gap-3 ${hideControls ? '' : 'md:grid-cols-2'}`}>
-        {!hideControls ? (
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <label className="text-xs font-semibold text-slate-600">
-              Clinical text
-            </label>
-            <textarea
-              className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-200"
-              rows={6}
-              value={text}
-              placeholder="Paste clinical note text here…"
-              onChange={(e) => setText(e.target.value)}
-            />
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                className={`btn btnPrimary text-white ${status === 'loading' ? 'opacity-70 pointer-events-none' : ''}`}
-                onClick={async () => {
-                  const payload = (text || '').trim()
-                  if (!payload) return
-                  setStatus('loading')
-                  setError(null)
-                  setResult(null)
-                  try {
-                    const data = await runAgentWorkflowTrace(payload)
-                    setResult(data)
-                    setStatus('done')
-                  } catch (e) {
-                    setError(e?.message || 'Request failed')
-                    setStatus('error')
-                  }
-                }}
-              >
-                {status === 'loading' ? 'Running…' : 'Run Agent Workflow'}
-              </button>
-              <button
-                type="button"
-                className="btn btnGhost"
-                onClick={() => {
-                  setText('')
-                  setResult(null)
-                  setError(null)
-                  setStatus('idle')
-                }}
-              >
-                Reset
-              </button>
-            </div>
-            {error && (
-              <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-                {String(error)}
+        {/* Input + Flow row */}
+        <div style={{ display: 'grid', gridTemplateColumns: hideControls ? '1fr' : '1fr 1fr', gap: 14 }}>
+
+          {!hideControls ? (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 14 }}>
+              <label style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', color: 'var(--text-muted)' }}>
+                Clinical Text
+              </label>
+              <textarea
+                style={{ marginTop: 8, width: '100%', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface)', padding: '10px 12px', fontSize: 13, color: 'var(--text)', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+                rows={6}
+                value={text}
+                placeholder="Paste clinical note text here..."
+                onChange={(e) => setText(e.target.value)}
+              />
+              <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                <Button
+                  disabled={status === 'loading'}
+                  onClick={async () => {
+                    const payload = (text || '').trim()
+                    if (!payload) return
+                    setStatus('loading')
+                    setError(null)
+                    setResult(null)
+                    try {
+                      const data = await runAgentWorkflowTrace(payload)
+                      setResult(data)
+                      setStatus('done')
+                    } catch (e) {
+                      setError(e?.message || 'Request failed')
+                      setStatus('error')
+                    }
+                  }}
+                >
+                  <Play size={13} />
+                  {status === 'loading' ? 'Running...' : 'Run Agent Workflow'}
+                </Button>
+                <Button variant="outline" size="sm" onClick={() => { setText(''); setResult(null); setError(null); setStatus('idle') }}>
+                  <RotateCcw size={12} />
+                  Reset
+                </Button>
               </div>
-            )}
-          </div>
-        ) : null}
-
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-sm font-semibold text-slate-800">
-              Agent Flow Visualization
-            </div>
-            <span className="text-xs text-slate-500">
-              Final confidence: {formatScore(governance?.confidence ?? result?.confidence)}
-            </span>
-          </div>
-
-          <div className="mt-3 overflow-x-auto pb-2">
-            <div className="flex min-w-max flex-nowrap items-center gap-2">
-              {[
-              { key: 'clinical', label: 'Clinical' },
-              { key: 'svm_after_clinical', label: 'SVM' },
-              { key: 'coding', label: 'Coding' },
-              { key: 'svm_after_coding', label: 'SVM' },
-              { key: 'rule', label: 'Rule' },
-              { key: 'svm_after_rules', label: 'SVM' },
-              { key: 'governance', label: 'Governance' },
-            ].map((s, idx, arr) => {
-              const step = flow.find((x) => x?.agent === s.key)
-              const stepStatus = step?.status || (result ? 'skipped' : 'idle')
-              const svmStatus =
-                s.key.startsWith('svm_') && svm && typeof svm === 'object'
-                  ? svm?.[s.key]?.status
-                  : null
-              return (
-                <div key={s.key} className="flex items-center gap-2">
-                  <div className="flex flex-col">
-                    <span className="text-xs font-semibold text-slate-700">
-                      {s.label}
-                    </span>
-                    <span
-                      className={`inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] ${pillColor(stepStatus)}`}
-                    >
-                      {String(stepStatus)}
-                    </span>
-                    {svmStatus ? (
-                      <span
-                        className={`mt-1 inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] ${svmStatusColor(
-                          svmStatus,
-                        )}`}
-                      >
-                        {String(svmStatus)}
-                      </span>
-                    ) : null}
-                    {s.key === 'governance' && governance?.decision ? (
-                      <span
-                        className={`mt-1 inline-flex w-fit items-center rounded-full border px-2 py-0.5 text-[11px] ${decisionColor(
-                          governance.decision,
-                        )}`}
-                      >
-                        {String(governance.decision).toUpperCase()}
-                      </span>
-                    ) : null}
-                  </div>
-                  {idx < arr.length - 1 && (
-                    <span className="text-slate-300" aria-hidden="true">
-                      →
-                    </span>
-                  )}
+              {error && (
+                <div style={{ marginTop: 10, borderRadius: 6, border: '1px solid #FECACA', background: '#FEF2F2', padding: '8px 12px', fontSize: 12, color: '#991B1B' }}>
+                  {String(error)}
                 </div>
-              )
-              })}
+              )}
             </div>
-          </div>
+          ) : null}
 
-          <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+          {/* Agent flow visualization */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                <GitBranch size={13} style={{ color: 'var(--primary)' }} />
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>Agent Flow</div>
+              </div>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                Final confidence: {formatScore(governance?.confidence ?? result?.confidence)}
+              </span>
+            </div>
+
+            <div style={{ overflowX: 'auto', paddingBottom: 4 }}>
+              <div style={{ display: 'flex', flexWrap: 'nowrap', alignItems: 'center', gap: 8, minWidth: 'max-content' }}>
+                {[
+                  { key: 'clinical', label: 'Clinical' },
+                  { key: 'svm_after_clinical', label: 'SVM' },
+                  { key: 'coding', label: 'Coding' },
+                  { key: 'svm_after_coding', label: 'SVM' },
+                  { key: 'rule', label: 'Rule' },
+                  { key: 'svm_after_rules', label: 'SVM' },
+                  { key: 'governance', label: 'Governance' },
+                ].map((s, idx, arr) => {
+                  const step = flow.find((x) => x?.agent === s.key)
+                  const stepStatus = step?.status || (result ? 'skipped' : 'idle')
+                  const svmStatus = s.key.startsWith('svm_') && svm && typeof svm === 'object' ? svm?.[s.key]?.status : null
+                  return (
+                    <div key={s.key} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 4, alignItems: 'flex-start' }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-strong)', textTransform: 'uppercase', letterSpacing: '0.3px' }}>
+                          {s.label}
+                        </span>
+                        <span style={{ ...pillBase, ...pillStyle(stepStatus) }}>
+                          {String(stepStatus)}
+                        </span>
+                        {svmStatus ? (
+                          <span style={{ ...pillBase, ...svmStyle(svmStatus) }}>
+                            {String(svmStatus)}
+                          </span>
+                        ) : null}
+                        {s.key === 'governance' && governance?.decision ? (
+                          <span style={{ ...pillBase, ...decisionStyle(governance.decision) }}>
+                            {String(governance.decision).toUpperCase()}
+                          </span>
+                        ) : null}
+                      </div>
+                      {idx < arr.length - 1 && (
+                        <span style={{ color: 'var(--text-muted)', fontSize: 16 }} aria-hidden="true">&rarr;</span>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Decision table */}
+            <div style={{ marginTop: 14 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>
                   Confidence + Decision
                 </div>
-                <div className="mt-1 text-xs text-slate-600">
-                  {governance?.reason ? String(governance.reason) : '—'}
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ ...pillBase, ...decisionStyle(governance?.decision) }}>
+                    {governance?.decision ? String(governance.decision).toUpperCase() : '—'}
+                  </span>
+                  {governance?.audit_id ? (
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 20, padding: '3px 10px' }}>
+                      Audit {String(governance.audit_id).slice(0, 8)}
+                    </span>
+                  ) : null}
                 </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${decisionColor(
-                    governance?.decision,
-                  )}`}
-                >
-                  {governance?.decision ? String(governance.decision).toUpperCase() : '—'}
-                </span>
-                {governance?.audit_id ? (
-                  <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
-                    Audit {String(governance.audit_id).slice(0, 8)}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="mt-3 overflow-auto rounded-lg border border-slate-200">
-              <table className="min-w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600">
+              {governance?.reason ? (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>{String(governance.reason)}</div>
+              ) : null}
+              <table className="dataTable">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 font-semibold">Step</th>
-                    <th className="px-3 py-2 font-semibold">Score</th>
-                    <th className="px-3 py-2 font-semibold">Decision</th>
-                    <th className="px-3 py-2 font-semibold">Notes</th>
+                    <th>Step</th>
+                    <th>Score</th>
+                    <th>Decision</th>
+                    <th>Notes</th>
                   </tr>
                 </thead>
                 <tbody>
                   {decisionTimeline.map((r, i) => (
-                    <tr key={`${r.step}-${i}`} className="border-t border-slate-100">
-                      <td className="px-3 py-2 font-semibold text-slate-800 whitespace-nowrap">
-                        {r.step}
+                    <tr key={`${r.step}-${i}`}>
+                      <td style={{ fontWeight: 600 }}>{r.step}</td>
+                      <td style={{ fontVariantNumeric: 'tabular-nums' }}>
+                        {r.step === 'Policy' ? (r.score === null || r.score === undefined ? '—' : String(r.score)) : formatScore(r.score)}
                       </td>
-                      <td className="px-3 py-2 text-slate-700">
-                        {r.step === 'Policy'
-                          ? r.score === null || r.score === undefined
-                            ? '—'
-                            : String(r.score)
-                          : formatScore(r.score)}
-                      </td>
-                      <td className="px-3 py-2">
+                      <td>
                         {r.step === 'Decision' ? (
-                          <span
-                            className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-semibold ${decisionColor(
-                              r.decision,
-                            )}`}
-                          >
-                            {r.decision}
-                          </span>
+                          <span style={{ ...pillBase, ...decisionStyle(r.decision) }}>{r.decision}</span>
                         ) : (
-                          <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-                            {r.decision}
-                          </span>
+                          <span style={{ ...pillBase, background: 'var(--surface-2)', color: 'var(--text)', border: '1px solid var(--border)' }}>{r.decision}</span>
                         )}
                       </td>
-                      <td className="px-3 py-2 text-slate-600">{r.meta || '—'}</td>
+                      <td style={{ color: 'var(--text-muted)' }}>{r.meta || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           </div>
+        </div>
 
-          {showVerification ? (
-            <div className="mt-4 grid gap-3 lg:grid-cols-2">
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Guardrail Panel
-                  </div>
-                  <span className="text-[11px] text-slate-500">
-                    Triggered: {policyTriggered.length + guardrailDetectors.length}
-                  </span>
+        {/* Verification panels */}
+        {showVerification ? (
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginTop: 14 }}>
+            {/* Guardrail panel */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <ShieldCheck size={13} style={{ color: 'var(--primary)' }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Guardrail Panel</div>
                 </div>
-                <div className="mt-2">
-                  <div className="text-[11px] font-semibold text-slate-600">
-                    Policies triggered
-                  </div>
-                  <div className="mt-2">
-                    {renderTags(policyTriggered, 'bg-white text-slate-700 border-slate-200')}
-                  </div>
-                </div>
-                <div className="mt-3">
-                  <div className="text-[11px] font-semibold text-slate-600">
-                    Edge detectors
-                  </div>
-                  <div className="mt-2">
-                    {renderTags(guardrailDetectors, 'bg-white text-slate-700 border-slate-200')}
-                  </div>
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                  <span className={`rounded-full border px-2 py-0.5 ${severityColor('critical')}`}>
-                    critical {govCounts.critical}
-                  </span>
-                  <span className={`rounded-full border px-2 py-0.5 ${severityColor('error')}`}>
-                    error {govCounts.error}
-                  </span>
-                  <span className={`rounded-full border px-2 py-0.5 ${severityColor('warning')}`}>
-                    warning {govCounts.warning}
-                  </span>
-                </div>
-                <div className="mt-3">
-                  <div className="text-[11px] font-semibold text-slate-600">
-                    Violations
-                  </div>
-                  {governanceIssues.length ? (
-                    <div className="mt-2 space-y-2">
-                      {governanceIssues.slice(0, 8).map((issue, i) => (
-                        <div
-                          key={`${issue?.policy_id || issue?.detector_id || issue?.type || 'issue'}-${i}`}
-                          className={`rounded-lg border px-3 py-2 text-xs ${severityColor(issue?.severity)}`}
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <span className="font-semibold">
-                              {String(issue?.type || 'issue')}
-                            </span>
-                            <span className="text-[11px]">
-                              {String(issue?.severity || 'warning')}
-                            </span>
-                          </div>
-                          <div className="mt-1">{String(issue?.message || '')}</div>
-                          {(issue?.policy_id || issue?.detector_id) && (
-                            <div className="mt-2 text-[11px] text-slate-600">
-                              {issue?.policy_id ? `policy: ${String(issue.policy_id)}` : ''}
-                              {issue?.policy_id && issue?.detector_id ? ' • ' : ''}
-                              {issue?.detector_id ? `detector: ${String(issue.detector_id)}` : ''}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  ) : (
-                    <div className="mt-2 text-xs text-slate-400">No violations</div>
-                  )}
-                </div>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Triggered: {policyTriggered.length + guardrailDetectors.length}</span>
               </div>
 
-              <div className="rounded-lg border border-slate-200 bg-white p-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Alert System
-                  </div>
-                  <span className="text-[11px] text-slate-500">
-                    Alerts: {alertItems.length}
-                  </span>
-                </div>
-                {alertItems.length ? (
-                  <div className="mt-3 space-y-2">
-                    {alertItems.slice(0, 10).map((a, i) => (
-                      <div
-                        key={`${a.kind}-${i}`}
-                        className={`rounded-lg border px-3 py-2 text-xs ${severityColor(a.severity)}`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="font-semibold">{String(a.title)}</span>
-                          <span className="text-[11px]">{String(a.severity)}</span>
-                        </div>
-                        <div className="mt-1">{String(a.message)}</div>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="mt-3 text-xs text-slate-400">No alerts</div>
-                )}
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Policies triggered</div>
+                <TagList items={policyTriggered} style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Edge detectors</div>
+                <TagList items={guardrailDetectors} style={{ background: 'var(--surface)', color: 'var(--text)', border: '1px solid var(--border)' }} />
+              </div>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+                {[['critical', govCounts.critical], ['error', govCounts.error], ['warning', govCounts.warning]].map(([sev, count]) => (
+                  <span key={sev} style={{ ...pillBase, ...severityStyle(sev) }}>{sev} {count}</span>
+                ))}
+              </div>
 
-                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                  <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                    Decision Timeline
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {[
-                      'Clinical',
-                      'Coding',
-                      'SVM',
-                      'Policy',
-                      'Decision',
-                    ].map((label, idx, arr) => (
-                      <div key={label} className="flex items-center gap-2">
-                        <span className="inline-flex items-center rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                          {label}
-                        </span>
-                        {idx < arr.length - 1 && (
-                          <span className="text-slate-300" aria-hidden="true">
-                            →
-                          </span>
-                        )}
+              <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Violations</div>
+              {governanceIssues.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {governanceIssues.slice(0, 8).map((issue, i) => <IssueCard key={i} issue={issue} i={i} />)}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No violations</div>
+              )}
+            </div>
+
+            {/* Alert system */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <Activity size={13} style={{ color: 'var(--primary)' }} />
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Alert System</div>
+                </div>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Alerts: {alertItems.length}</span>
+              </div>
+
+              {alertItems.length ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 14 }}>
+                  {alertItems.slice(0, 10).map((a, i) => (
+                    <div key={`${a.kind}-${i}`} style={{ ...severityStyle(a.severity), borderRadius: 6, padding: '8px 12px', fontSize: 12 }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <span style={{ fontWeight: 600 }}>{String(a.title)}</span>
+                        <span style={{ fontSize: 11 }}>{String(a.severity)}</span>
                       </div>
-                    ))}
-                  </div>
-                  <div className="mt-3 text-xs text-slate-600">
-                    Clinical → SVM → Coding → SVM → Rule → SVM → Policy → Decision
-                  </div>
+                      <div style={{ marginTop: 4 }}>{String(a.message)}</div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>No alerts</div>
+              )}
+
+              <div style={{ background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', padding: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 8 }}>Decision Timeline</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6 }}>
+                  {['Clinical', 'Coding', 'SVM', 'Policy', 'Decision'].map((label, idx, arr) => (
+                    <div key={label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ ...pillBase, background: 'var(--primary-light)', color: 'var(--primary)', border: '1px solid var(--primary-border)' }}>{label}</span>
+                      {idx < arr.length - 1 && <span style={{ color: 'var(--text-muted)' }}>&rarr;</span>}
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 8, fontSize: 11, color: 'var(--text-muted)' }}>
+                  Clinical &rarr; SVM &rarr; Coding &rarr; SVM &rarr; Rule &rarr; SVM &rarr; Policy &rarr; Decision
                 </div>
               </div>
             </div>
-          ) : null}
+          </div>
+        ) : null}
 
-          {showVerification ? (
-            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Validation Status
-              </div>
-              <span
-                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
-                  payer?.is_valid
-                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : 'bg-rose-50 text-rose-700 border-rose-200'
-                }`}
-              >
+        {/* Validation status */}
+        {showVerification ? (
+          <div style={{ marginTop: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Validation Status</div>
+              <span style={{ ...pillBase, ...(payer?.is_valid ? { background: '#D1FAE5', color: '#065F46', border: '1px solid #A7F3D0' } : { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }) }}>
                 {payer ? (payer.is_valid ? 'Valid' : 'Invalid') : '—'}
               </span>
             </div>
-            <div className="mt-2 text-xs text-slate-600">
-              Rule confidence: {formatScore(payer?.confidence)}
-            </div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>Rule confidence: {formatScore(payer?.confidence)}</div>
             {payer?.issues && payer.issues.length > 0 ? (
-              <div className="mt-3 space-y-2">
-                {payer.issues.slice(0, 8).map((issue, i) => (
-                  <div
-                    key={`${issue?.type || 'issue'}-${i}`}
-                    className={`rounded-lg border px-3 py-2 text-xs ${severityColor(issue?.severity)}`}
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-semibold">
-                        {String(issue?.type || 'issue')}
-                      </span>
-                      <span className="text-[11px]">
-                        {String(issue?.severity || 'warning')}
-                      </span>
-                    </div>
-                    <div className="mt-1">{String(issue?.message || '')}</div>
-                  </div>
-                ))}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {payer.issues.slice(0, 8).map((issue, i) => <IssueCard key={i} issue={issue} i={i} />)}
               </div>
             ) : (
-              <div className="mt-3 text-xs text-slate-400">No issues</div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No issues</div>
             )}
-            </div>
-          ) : null}
+          </div>
+        ) : null}
 
-          {showVerification ? (
-            <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider">
-                Semantic Verification (SVM)
-              </div>
-              <span
-                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${svmStatusColor(
-                  result?.status,
-                )}`}
-              >
+        {/* SVM Stages */}
+        {showVerification ? (
+          <div style={{ marginTop: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Semantic Verification (SVM)</div>
+              <span style={{ ...pillBase, ...svmStyle(result?.status) }}>
                 {result?.status ? String(result.status) : '—'}
               </span>
             </div>
             {svmStages.length ? (
-              <div className="mt-3 space-y-2">
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {svmStages.map((stage) => {
                   const stageStatus = stage?.data?.status
-                  const stageConfidence = stage?.data?.confidence
-                  const issues = Array.isArray(stage?.data?.issues)
-                    ? stage.data.issues
-                    : []
-                  const claims = Array.isArray(stage?.data?.claims)
-                    ? stage.data.claims
-                    : []
-                  const scores =
-                    stage?.data?.scores && typeof stage.data.scores === 'object'
-                      ? stage.data.scores
-                      : {}
+                  const stageConf = stage?.data?.confidence
+                  const issues = Array.isArray(stage?.data?.issues) ? stage.data.issues : []
+                  const claims = Array.isArray(stage?.data?.claims) ? stage.data.claims : []
+                  const scores = stage?.data?.scores && typeof stage.data.scores === 'object' ? stage.data.scores : {}
                   return (
-                    <details
+                    <SvmStageItem
                       key={stage.key}
-                      className="rounded-lg border border-slate-200 bg-slate-50 p-3"
-                    >
-                      <summary className="cursor-pointer select-none">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <span className="text-xs font-semibold text-slate-800">
-                            {String(stage.key)}
-                          </span>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span
-                              className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] ${svmStatusColor(
-                                stageStatus,
-                              )}`}
-                            >
-                              {stageStatus ? String(stageStatus) : '—'}
-                            </span>
-                            <span className="text-[11px] text-slate-500">
-                              conf {formatScore(stageConfidence)}
-                            </span>
-                          </div>
-                        </div>
-                      </summary>
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div>
-                          <div className="text-[11px] font-semibold text-slate-600">
-                            Scores
-                          </div>
-                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-slate-600">
-                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
-                              source {formatScore(scores?.source_alignment)}
-                            </span>
-                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
-                              consistency {formatScore(scores?.consistency)}
-                            </span>
-                            <span className="rounded-full border border-slate-200 bg-white px-2 py-0.5">
-                              reason {formatScore(scores?.reasonability)}
-                            </span>
-                          </div>
-                          <div className="mt-3 text-[11px] font-semibold text-slate-600">
-                            Claims ({claims.length})
-                          </div>
-                          <div className="mt-2">
-                            {renderTags(
-                              claims.slice(0, 10).map((c) => {
-                                const t = String(c?.type || '').trim()
-                                const v = String(c?.value || '').trim()
-                                if (!t && !v) return 'claim'
-                                if (!t) return v
-                                if (!v) return t
-                                return `${t}: ${v}`
-                              }),
-                              'bg-white text-slate-700 border-slate-200',
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-[11px] font-semibold text-slate-600">
-                            Issues ({issues.length})
-                          </div>
-                          {issues.length ? (
-                            <div className="mt-2 space-y-2">
-                              {issues.slice(0, 6).map((issue, i) => (
-                                <div
-                                  key={`${issue?.type || 'issue'}-${i}`}
-                                  className={`rounded-lg border px-3 py-2 text-xs ${severityColor(
-                                    issue?.severity,
-                                  )}`}
-                                >
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <span className="font-semibold">
-                                      {String(issue?.type || 'issue')}
-                                    </span>
-                                    <span className="text-[11px]">
-                                      {String(issue?.severity || 'warning')}
-                                    </span>
-                                  </div>
-                                  <div className="mt-1">
-                                    {String(issue?.message || '')}
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="mt-2 text-xs text-slate-400">
-                              No issues
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </details>
+                      stage={stage}
+                      stageStatus={stageStatus}
+                      stageConf={stageConf}
+                      issues={issues}
+                      claims={claims}
+                      scores={scores}
+                    />
                   )
                 })}
               </div>
             ) : (
-              <div className="mt-3 text-xs text-slate-400">
-                No SVM results
-              </div>
-            )}
-            </div>
-          ) : null}
-        </div>
-      </div>
-
-      {result && showOutputs && (
-        <div className="mt-4 grid gap-3 lg:grid-cols-3">
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-slate-800">
-                Clinical Agent Output
-              </div>
-              <span className="text-xs text-slate-500">
-                {formatScore(clinical?.confidence)}
-              </span>
-            </div>
-            <div className="mt-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Diagnosis extracted
-              </div>
-              {renderTags(
-                clinical?.diagnosis,
-                'bg-red-50 text-red-700 border-red-200',
-              )}
-            </div>
-            <div className="mt-4">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Procedures extracted
-              </div>
-              {renderTags(
-                clinical?.procedures,
-                'bg-sky-50 text-sky-700 border-sky-200',
-              )}
-            </div>
-            {clinical?.explanation && (
-              <div className="mt-4 text-xs text-slate-600">
-                {String(clinical.explanation)}
-              </div>
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No SVM results</div>
             )}
           </div>
+        ) : null}
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-slate-800">
-                Coding Agent Output
+        {/* Agent outputs */}
+        {result && showOutputs && (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 14 }}>
+            {/* Clinical */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>Clinical Agent</div>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatScore(clinical?.confidence)}</span>
               </div>
-              <span className="text-xs text-slate-500">
-                {formatScore(coding?.confidence)}
-              </span>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 6 }}>Diagnosis extracted</div>
+                <TagList items={clinical?.diagnosis} style={{ background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 6 }}>Procedures extracted</div>
+                <TagList items={clinical?.procedures} style={{ background: '#EFF6FF', color: '#1D4ED8', border: '1px solid #BFDBFE' }} />
+              </div>
+              {clinical?.explanation && (
+                <div style={{ marginTop: 10, fontSize: 12, color: 'var(--text-muted)' }}>{String(clinical.explanation)}</div>
+              )}
             </div>
-            <div className="mt-2 text-xs text-slate-600">
-              {coding?.mapping_reason ? String(coding.mapping_reason) : '—'}
-            </div>
-            <div className="mt-3 overflow-auto rounded-lg border border-slate-200">
-              <table className="min-w-full text-left text-xs">
-                <thead className="bg-slate-50 text-slate-600">
+
+            {/* Coding */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>Coding Agent</div>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatScore(coding?.confidence)}</span>
+              </div>
+              {coding?.mapping_reason && (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 10 }}>{String(coding.mapping_reason)}</div>
+              )}
+              <table className="dataTable">
+                <thead>
                   <tr>
-                    <th className="px-3 py-2 font-semibold">Code</th>
-                    <th className="px-3 py-2 font-semibold">Description</th>
-                    <th className="px-3 py-2 font-semibold">Score</th>
-                    <th className="px-3 py-2 font-semibold">Source</th>
+                    <th>Code</th>
+                    <th>Description</th>
+                    <th>Score</th>
+                    <th>Source</th>
                   </tr>
                 </thead>
                 <tbody>
                   {icdCodes.length ? (
                     icdCodes.slice(0, 10).map((c, i) => (
-                      <tr
-                        key={`${c?.code || 'code'}-${i}`}
-                        className="border-t border-slate-100"
-                      >
-                        <td className="px-3 py-2 whitespace-nowrap font-semibold text-slate-800">
-                          {String(c?.code || '')}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700">
-                          {String(c?.description || '')}
-                        </td>
-                        <td className="px-3 py-2 text-slate-700">
+                      <tr key={`${c?.code || 'code'}-${i}`}>
+                        <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>{String(c?.code || '')}</td>
+                        <td>{String(c?.description || '')}</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>
                           {formatScore(c?.score)}
                           {c?.is_uncertain ? (
-                            <span className="ml-2 inline-flex items-center rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-800">
-                              Uncertain
-                            </span>
+                            <span style={{ ...pillBase, marginLeft: 6, background: '#FFFBEB', color: '#92400E', border: '1px solid #FDE68A', fontSize: 10 }}>Uncertain</span>
                           ) : null}
                         </td>
-                        <td className="px-3 py-2 text-slate-600">
-                          {String(c?.source_text || '')}
-                        </td>
+                        <td style={{ color: 'var(--text-muted)' }}>{String(c?.source_text || '')}</td>
                       </tr>
                     ))
                   ) : (
-                    <tr className="border-t border-slate-100">
-                      <td
-                        className="px-3 py-3 text-slate-400"
-                        colSpan={4}
-                      >
-                        No codes
-                      </td>
-                    </tr>
+                    <tr><td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-muted)' }}>No codes</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
-          </div>
 
-          <div className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-semibold text-slate-800">
-                Rule Agent Output
+            {/* Rule */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>Rule Agent</div>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{formatScore(payer?.confidence)}</span>
               </div>
-              <span className="text-xs text-slate-500">
-                {formatScore(payer?.confidence)}
-              </span>
-            </div>
-            <div className="mt-3">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Validation status
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 6 }}>Validation Status</div>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                  <span style={{ ...pillBase, ...(payer?.is_valid ? { background: '#D1FAE5', color: '#065F46', border: '1px solid #A7F3D0' } : { background: '#FEF2F2', color: '#991B1B', border: '1px solid #FECACA' }) }}>
+                    {payer ? (payer.is_valid ? 'Valid' : 'Invalid') : '—'}
+                  </span>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Overall: {formatScore(result?.confidence)}</span>
+                </div>
               </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${
-                    payer?.is_valid
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border-rose-200'
-                  }`}
-                >
-                  {payer ? (payer.is_valid ? 'Valid' : 'Invalid') : '—'}
-                </span>
-                <span className="text-xs text-slate-600">
-                  Overall: {formatScore(result?.confidence)}
-                </span>
-              </div>
-            </div>
-            <div className="mt-4">
-              <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-2">
-                Issues
-              </div>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 6 }}>Issues</div>
               {payer?.issues && payer.issues.length > 0 ? (
-                <div className="space-y-2">
-                  {payer.issues.slice(0, 8).map((issue, i) => (
-                    <div
-                      key={`${issue?.type || 'issue'}-${i}`}
-                      className={`rounded-lg border px-3 py-2 text-xs ${severityColor(issue?.severity)}`}
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <span className="font-semibold">
-                          {String(issue?.type || 'issue')}
-                        </span>
-                        <span className="text-[11px]">
-                          {String(issue?.severity || 'warning')}
-                        </span>
-                      </div>
-                      <div className="mt-1">{String(issue?.message || '')}</div>
-                    </div>
-                  ))}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {payer.issues.slice(0, 8).map((issue, i) => <IssueCard key={i} issue={issue} i={i} />)}
                 </div>
               ) : (
-                <div className="text-xs text-slate-400">No issues</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No issues</div>
               )}
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {result && (
-        <details className="mt-4 group">
-          <summary className="text-xs font-medium text-slate-500 cursor-pointer hover:text-sky-600 transition-colors">
-            View Raw Trace JSON
-          </summary>
-          <pre className="mt-2 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
-            {JSON.stringify(result, null, 2)}
-          </pre>
-        </details>
+        {/* Raw JSON toggle */}
+        {result && (
+          <div style={{ marginTop: 14 }}>
+            <button
+              type="button"
+              onClick={() => setRawOpen((v) => !v)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: 4, padding: 0 }}
+            >
+              {rawOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+              {rawOpen ? 'Hide' : 'View'} Raw Trace JSON
+            </button>
+            {rawOpen && (
+              <pre style={{ marginTop: 8, overflow: 'auto', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: '10px 12px', fontSize: 11, color: 'var(--text-muted)' }}>
+                {JSON.stringify(result, null, 2)}
+              </pre>
+            )}
+          </div>
+        )}
+
+      </div>
+    </div>
+  )
+}
+
+/* ── SVM stage collapsible ── */
+function SvmStageItem({ stage, stageStatus, stageConf, issues, claims, scores }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface-2)', overflow: 'hidden' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer', padding: '10px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}
+      >
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)' }}>{String(stage.key)}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', borderRadius: 20, padding: '2px 10px', fontSize: 11, fontWeight: 600, ...svmStyle(stageStatus) }}>
+            {stageStatus ? String(stageStatus) : '—'}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>conf {formatScore(stageConf)}</span>
+          {open ? <ChevronUp size={13} style={{ color: 'var(--text-muted)' }} /> : <ChevronDown size={13} style={{ color: 'var(--text-muted)' }} />}
+        </div>
+      </button>
+      {open && (
+        <div style={{ padding: '0 14px 14px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Scores</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {[['source', scores?.source_alignment], ['consistency', scores?.consistency], ['reason', scores?.reasonability]].map(([label, val]) => (
+                <span key={label} style={{ fontSize: 11, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '2px 8px', color: 'var(--text)' }}>
+                  {label} {formatScore(val)}
+                </span>
+              ))}
+            </div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginTop: 10, marginBottom: 6 }}>Claims ({claims.length})</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {claims.slice(0, 10).map((c, i) => {
+                const t = String(c?.type || '').trim()
+                const v = String(c?.value || '').trim()
+                const label = !t && !v ? 'claim' : !t ? v : !v ? t : `${t}: ${v}`
+                return (
+                  <span key={i} style={{ fontSize: 11, background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 20, padding: '2px 8px', color: 'var(--text)' }}>
+                    {label}
+                  </span>
+                )
+              })}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 6 }}>Issues ({issues.length})</div>
+            {issues.length ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {issues.slice(0, 6).map((issue, i) => (
+                  <div key={i} style={{ ...severityStyle(issue?.severity), borderRadius: 6, padding: '8px 10px', fontSize: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span style={{ fontWeight: 600 }}>{String(issue?.type || 'issue')}</span>
+                      <span style={{ fontSize: 11 }}>{String(issue?.severity || 'warning')}</span>
+                    </div>
+                    <div style={{ marginTop: 4 }}>{String(issue?.message || '')}</div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No issues</div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   )

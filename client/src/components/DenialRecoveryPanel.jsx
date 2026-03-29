@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react'
+import { TrendingUp, ShieldOff, Zap, AlertTriangle, Phone, RefreshCw, Send } from 'lucide-react'
 import { getDenialDashboard, runDenialAgent, startVapiOutboundCall, syncVapiCall } from '../services/api'
+import { Button } from './ui/button'
 
 function pillClass(status) {
   const s = String(status || '').toLowerCase()
-  if (s === 'approved') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
-  if (s === 'resubmitted') return 'bg-sky-50 text-sky-700 border-sky-200'
-  if (s === 'denied') return 'bg-rose-50 text-rose-700 border-rose-200'
-  if (s === 'query') return 'bg-amber-50 text-amber-800 border-amber-200'
-  return 'bg-slate-50 text-slate-700 border-slate-200'
+  if (s === 'approved') return 'statusBadge approved'
+  if (s === 'resubmitted') return 'statusBadge resubmitted'
+  if (s === 'denied') return 'statusBadge denied'
+  if (s === 'query') return 'statusBadge query'
+  return 'statusBadge default'
 }
 
 function stageLabel(stage) {
@@ -223,78 +225,84 @@ export default function DenialRecoveryPanel() {
   }, [callInfo, selectedClaimId, selectedDenialEventId, syncState])
 
   return (
-    <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      {/* ── Top action bar ── */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <div>
-          <div className="text-base font-semibold text-slate-800">Denial Recovery Panel</div>
-          <div className="mt-1 text-xs text-slate-500">Track denied claims, recovery progress, and outcomes.</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>Live claim recovery tracking and business impact metrics.</div>
         </div>
-        <button className="btn btnSecondary" onClick={refresh} disabled={state === 'loading'}>
-          Refresh
-        </button>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={state === 'loading'}>
+          <RefreshCw size={13} />
+          {state === 'loading' ? 'Loading…' : 'Refresh'}
+        </Button>
+      </div>
+
+      {/* ── KPI Cards ── */}
+      <div className="kpiGrid">
+        <div className="kpiCard green">
+          <div className="kpiCardTop">
+            <span className="kpiCardLabel">Revenue Recovered</span>
+            <div className="kpiCardIconWrap"><TrendingUp size={15} strokeWidth={2.5} /></div>
+          </div>
+          <div className="kpiCardValue">{formatInr(metrics.revenue_recovered || 0)}</div>
+          <div className="kpiCardSub">₹ recovered from previously-denied claims</div>
+        </div>
+        <div className="kpiCard blue">
+          <div className="kpiCardTop">
+            <span className="kpiCardLabel">Denial Reduction</span>
+            <div className="kpiCardIconWrap"><ShieldOff size={15} strokeWidth={2.5} /></div>
+          </div>
+          <div className="kpiCardValue">{Number(metrics.denial_reduction_percent ?? metrics.recovered_percent ?? 0).toFixed(1)}%</div>
+          <div className="kpiCardSub">{Number(metrics.recovered_claims || 0)} recovered · {Number(metrics.denied_claims || 0)} denied</div>
+        </div>
+        <div className="kpiCard teal">
+          <div className="kpiCardTop">
+            <span className="kpiCardLabel">Automation Rate</span>
+            <div className="kpiCardIconWrap"><Zap size={15} strokeWidth={2.5} /></div>
+          </div>
+          <div className="kpiCardValue">{Number(metrics.automation_percent || 0).toFixed(1)}%</div>
+          <div className="kpiCardSub">Denied claims with auto correction or resubmission</div>
+        </div>
+        <div className="kpiCard amber">
+          <div className="kpiCardTop">
+            <span className="kpiCardLabel">Denial Rate</span>
+            <div className="kpiCardIconWrap"><AlertTriangle size={15} strokeWidth={2.5} /></div>
+          </div>
+          <div className="kpiCardValue">{Number(metrics.denial_rate_percent || 0).toFixed(1)}%</div>
+          <div className="kpiCardSub">{Number(metrics.denied_claims || 0)} denied · {Number(metrics.total_claims || 0)} total</div>
+        </div>
       </div>
 
       {error && (
-        <div className="mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">{error}</div>
+        <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-600">{error}</div>
       )}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Revenue Recovered</div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900">{formatInr(metrics.revenue_recovered || 0)}</div>
-          <div className="mt-1 text-xs text-slate-500">₹ recovered from previously-denied claims</div>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Denial Reduction</div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900">
-            {Number(metrics.denial_reduction_percent ?? metrics.recovered_percent ?? 0).toFixed(1)}%
-          </div>
-          <div className="mt-1 text-xs text-slate-500">
-            {Number(metrics.recovered_claims || 0)} recovered · {Number(metrics.denied_claims || 0)} denied
-          </div>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Automation</div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900">
-            {Number(metrics.automation_percent || 0).toFixed(1)}%
-          </div>
-          <div className="mt-1 text-xs text-slate-500">Denied claims with auto correction/resubmission</div>
-        </div>
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Denial Rate</div>
-          <div className="mt-2 text-2xl font-semibold text-slate-900">
-            {Number(metrics.denial_rate_percent || 0).toFixed(1)}%
-          </div>
-          <div className="mt-1 text-xs text-slate-500">
-            {Number(metrics.denied_claims || 0)} denied · {Number(metrics.total_claims || 0)} total
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-5 rounded-lg border border-slate-200 bg-slate-50 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="panel" style={{ marginBottom: 20 }}>
+        <div className="panelHead">
           <div>
-            <div className="text-sm font-semibold text-slate-800">Automated Call (Vapi)</div>
-            <div className="mt-1 text-xs text-slate-500">
-              On localhost, webhooks can’t reach your machine. Use “Sync Result” after the call ends, or use a public URL (ngrok) for live webhooks.
-            </div>
+            <div className="panelHeadTitle">Automated Call (Vapi)</div>
+            <div className="panelHeadSub">On localhost, webhooks can't reach your machine. Use "Sync Result" after the call ends.</div>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="btn btnSecondary" onClick={startCall} disabled={callState !== 'idle'}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Button variant="outline" size="sm" onClick={startCall} disabled={callState !== 'idle'}>
+              <Phone size={13} />
               {callState === 'starting' ? 'Starting…' : 'Call Insurer'}
-            </button>
-            <button className="btn btnSecondary" onClick={syncCall} disabled={syncState !== 'idle' || !(callInfo?.call_id || callInfo?.callId)}>
+            </Button>
+            <Button variant="outline" size="sm" onClick={syncCall} disabled={syncState !== 'idle' || !(callInfo?.call_id || callInfo?.callId)}>
+              <RefreshCw size={13} />
               {syncState === 'syncing' ? 'Syncing…' : 'Sync Result'}
-            </button>
-            <button
-              className="btn btnPrimary text-white"
+            </Button>
+            <Button
+              size="sm"
               onClick={resubmit}
               disabled={resubmitState !== 'idle' || !selectedClaimId || !selectedDenialEventId || Boolean(selectedRow?.needs_call)}
             >
+              <Send size={13} />
               {resubmitState === 'running' ? 'Resubmitting…' : 'Resubmit'}
-            </button>
+            </Button>
           </div>
         </div>
+        <div className="panelBody">
 
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="rounded-lg border border-slate-200 bg-white p-3">
@@ -371,126 +379,108 @@ export default function DenialRecoveryPanel() {
             </div>
           </div>
         ) : null}
+        </div>
       </div>
 
-      <div className="mt-5 space-y-3">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
         {[
-          { key: 'needs_call', title: 'Needs Call', subtitle: 'Denials missing details (call insurer)', items: needsCallRows },
-          { key: 'active', title: 'In Progress', subtitle: 'Denied / resubmitting', items: otherRows },
-          { key: 'solved', title: 'Solved', subtitle: 'Recovered (approved)', items: solvedRows },
+          { key: 'needs_call', title: 'Needs Call', subtitle: 'Denials missing details — call insurer to proceed', items: needsCallRows },
+          { key: 'active', title: 'In Progress', subtitle: 'Denied / currently resubmitting', items: otherRows },
+          { key: 'solved', title: 'Recovered', subtitle: 'Successfully approved after resubmission', items: solvedRows },
         ]
           .filter((s) => (s.key === 'solved' ? (Array.isArray(s.items) ? s.items.length > 0 : false) : true))
           .map((section) => {
           const list = Array.isArray(section.items) ? section.items : []
           return (
-            <div key={section.key} className="overflow-hidden rounded-lg border border-slate-200">
-              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+            <div key={section.key} className="panel">
+              <div className="panelHead">
                 <div>
-                  <div className="text-sm font-semibold text-slate-800">
-                    {section.title} <span className="text-slate-500">({list.length})</span>
+                  <div className="panelHeadTitle">
+                    {section.title}
+                    <span style={{ fontWeight: 500, color: 'var(--text-muted)', marginLeft: 6 }}>({list.length})</span>
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">{section.subtitle}</div>
+                  <div className="panelHeadSub">{section.subtitle}</div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-12 gap-2 border-b border-slate-200 bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                <div className="col-span-3">Claim</div>
-                <div className="col-span-2">Status</div>
-                <div className="col-span-2">Progress</div>
-                <div className="col-span-2 text-right">Amount</div>
-                <div className="col-span-3">Timeline</div>
+              <div style={{ overflowX: 'auto' }}>
+              <table className="dataTable" style={{ minWidth: 680 }}>
+                <thead>
+                  <tr>
+                    <th style={{ width: '22%' }}>Claim</th>
+                    <th style={{ width: '14%' }}>Status</th>
+                    <th style={{ width: '16%' }}>Progress</th>
+                    <th style={{ width: '13%', textAlign: 'right' }}>Amount</th>
+                    <th>Timeline</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {state === 'loading' && (
+                    <tr><td colSpan={5} style={{ color: 'var(--text-muted)', padding: '16px 14px', fontSize: 13 }}>Loading…</td></tr>
+                  )}
+                  {state !== 'loading' && list.length === 0 && (
+                    <tr><td colSpan={5} style={{ color: 'var(--text-muted)', padding: '16px 14px', fontSize: 13 }}>No claims in this section.</td></tr>
+                  )}
+                  {list.map((r) => {
+                    const claimId = String(r?.claim_id || '')
+                    const isSelected = claimId === selectedClaimId
+                    const isOpen = Boolean(expanded[claimId])
+                    const denialTypes = Array.isArray(r?.denial_types) ? r.denial_types : []
+                    const progress = r?.progress || {}
+                    const percent = Number(progress?.percent || 0)
+                    return (
+                      <>
+                        <tr
+                          key={claimId}
+                          className={isSelected ? 'selected' : ''}
+                          style={{ cursor: 'pointer' }}
+                          onClick={() => {
+                            setSelectedClaimId(claimId)
+                            setSelectedDenialEventId(r?.last_denial_event_id ?? null)
+                            setExpanded((p) => ({ ...p, [claimId]: !p[claimId] }))
+                          }}
+                        >
+                          <td>
+                            <div style={{ fontWeight: 600, fontSize: 13, color: 'var(--text-strong)', fontFamily: 'var(--font-mono)' }}>{claimId.slice(0, 8)}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>
+                              D:{Number(r?.denials_count || 0)} · C:{Number(r?.corrections_count || 0)} · R:{Number(r?.resubmissions_count || 0)}
+                            </div>
+                            {denialTypes.length > 0 && (
+                              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{denialTypes.join(', ')}</div>
+                            )}
+                          </td>
+                          <td>
+                            <span className={pillClass(r?.status)}>{String(r?.status || '—')}</span>
+                            {r?.updated_at && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{String(r.updated_at)}</div>}
+                          </td>
+                          <td>
+                            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)', marginBottom: 5 }}>{stageLabel(progress?.stage)}</div>
+                            <div className="progressBar"><div className="progressBarFill" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} /></div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>{percent}%</div>
+                          </td>
+                          <td style={{ textAlign: 'right' }}>
+                            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-strong)' }}>{formatInr(r?.amount)}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>conf: {Number(r?.last_confidence || 0).toFixed(2)}</div>
+                          </td>
+                          <td><Timeline items={r?.timeline} /></td>
+                        </tr>
+                        {isOpen && (
+                          <tr key={`${claimId}-detail`}>
+                            <td colSpan={5} style={{ background: 'var(--surface-2)', padding: '12px 14px' }}>
+                              <div style={{ marginBottom: 8, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>Claim Detail</div>
+                              <Timeline items={r?.timeline} />
+                              <pre style={{ marginTop: 10, fontSize: 11, background: 'white', border: '1px solid var(--border)', borderRadius: 6, padding: '10px 12px', overflowX: 'auto', maxHeight: 200, color: 'var(--text)' }}>
+                                {JSON.stringify({ claim_id: r?.claim_id, status: r?.status, denial_types: r?.denial_types, progress: r?.progress, last_denial_event_id: r?.last_denial_event_id }, null, 2)}
+                              </pre>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    )
+                  })}
+                </tbody>
+              </table>
               </div>
-
-              {state === 'loading' && (
-                <div className="px-4 py-4 text-xs text-slate-500">Loading denial dashboard…</div>
-              )}
-
-              {state !== 'loading' && list.length === 0 && (
-                <div className="px-4 py-4 text-xs text-slate-500">No claims in this section.</div>
-              )}
-
-              {list.map((r) => {
-          const claimId = String(r?.claim_id || '')
-          const isOpen = Boolean(expanded[claimId])
-          const denialTypes = Array.isArray(r?.denial_types) ? r.denial_types : []
-          const progress = r?.progress || {}
-          const percent = Number(progress?.percent || 0)
-
-          return (
-            <div key={claimId} className="border-b border-slate-200 last:border-b-0">
-              <button
-                className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors"
-                onClick={() => {
-                  setSelectedClaimId(claimId)
-                  setSelectedDenialEventId(r?.last_denial_event_id ?? null)
-                  setExpanded((p) => ({ ...p, [claimId]: !p[claimId] }))
-                }}
-              >
-                <div className="grid grid-cols-12 items-center gap-2">
-                  <div className="col-span-3">
-                    <div className="text-sm font-semibold text-slate-900">{claimId.slice(0, 8)}</div>
-                    <div className="mt-0.5 text-xs text-slate-500">
-                      Denials: {Number(r?.denials_count || 0)} · Corrections: {Number(r?.corrections_count || 0)} · Resub: {Number(r?.resubmissions_count || 0)}
-                    </div>
-                    {denialTypes.length > 0 && (
-                      <div className="mt-1 text-[11px] text-slate-500">{denialTypes.join(', ')}</div>
-                    )}
-                  </div>
-
-                  <div className="col-span-2">
-                    <div className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-semibold ${pillClass(r?.status)}`}>
-                      {String(r?.status || '—')}
-                    </div>
-                    <div className="mt-1 text-[11px] text-slate-500">{r?.updated_at ? String(r.updated_at) : ''}</div>
-                  </div>
-
-                  <div className="col-span-2">
-                    <div className="text-xs font-semibold text-slate-700">{stageLabel(progress?.stage)}</div>
-                    <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                      <div className="h-2 rounded-full bg-slate-900" style={{ width: `${Math.max(0, Math.min(100, percent))}%` }} />
-                    </div>
-                    <div className="mt-1 text-[11px] text-slate-500">{percent}%</div>
-                  </div>
-
-                  <div className="col-span-2 text-right">
-                    <div className="text-sm font-semibold text-slate-900">{formatInr(r?.amount)}</div>
-                    <div className="mt-0.5 text-[11px] text-slate-500">Last conf: {Number(r?.last_confidence || 0).toFixed(2)}</div>
-                  </div>
-
-                  <div className="col-span-3">
-                    <Timeline items={r?.timeline} />
-                  </div>
-                </div>
-              </button>
-
-              {isOpen && (
-                <div className="px-4 pb-4">
-                  <div className="rounded-lg border border-slate-200 bg-white p-3">
-                    <div className="text-xs font-bold uppercase tracking-wider text-slate-500">Claim Timeline</div>
-                    <div className="mt-2">
-                      <Timeline items={r?.timeline} />
-                    </div>
-                    <pre className="mt-3 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
-                      {JSON.stringify(
-                        {
-                          claim_id: r?.claim_id,
-                          status: r?.status,
-                          denial_types: r?.denial_types,
-                          progress: r?.progress,
-                          last_denial_event_id: r?.last_denial_event_id,
-                          last_correction_id: r?.last_correction_id,
-                          last_resubmission_id: r?.last_resubmission_id,
-                        },
-                        null,
-                        2,
-                      )}
-                    </pre>
-                  </div>
-                </div>
-              )}
-            </div>
-          )
-              })}
             </div>
           )
         })}
