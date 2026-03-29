@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { runAgentWorkflowTrace } from '../services/api'
 
 function formatScore(value) {
@@ -100,11 +100,29 @@ function renderTags(items, className) {
   )
 }
 
-export default function AgentWorkflowPanel({ view = 'full' }) {
-  const [text, setText] = useState('')
+export default function AgentWorkflowPanel({
+  view = 'full',
+  externalResult = null,
+  externalText = '',
+  hideControls = false,
+  title = 'Agentic Coding Workflow',
+}) {
+  const [text, setText] = useState(String(externalText || ''))
   const [status, setStatus] = useState('idle')
   const [error, setError] = useState(null)
-  const [result, setResult] = useState(null)
+  const [result, setResult] = useState(externalResult)
+
+  useEffect(() => {
+    if (!hideControls) return
+    setText(String(externalText || ''))
+  }, [externalText, hideControls])
+
+  useEffect(() => {
+    if (!externalResult) return
+    setResult(externalResult)
+    setError(null)
+    setStatus('done')
+  }, [externalResult])
 
   const showOutputs = view === 'full' || view === 'flow'
   const showVerification = view === 'full' || view === 'verification'
@@ -247,7 +265,7 @@ export default function AgentWorkflowPanel({ view = 'full' }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-base font-semibold text-slate-800">
-            Agentic Coding Workflow
+            {String(title || 'Agentic Coding Workflow')}
           </div>
           <p className="text-xs text-slate-500">
             Clinical → SVM → Coding → SVM → Rule → SVM → Governance, with guardrails and audit.
@@ -260,59 +278,61 @@ export default function AgentWorkflowPanel({ view = 'full' }) {
         )}
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <label className="text-xs font-semibold text-slate-600">
-            Clinical text
-          </label>
-          <textarea
-            className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-200"
-            rows={6}
-            value={text}
-            placeholder="Paste clinical note text here…"
-            onChange={(e) => setText(e.target.value)}
-          />
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={`btn btnPrimary text-white ${status === 'loading' ? 'opacity-70 pointer-events-none' : ''}`}
-              onClick={async () => {
-                const payload = (text || '').trim()
-                if (!payload) return
-                setStatus('loading')
-                setError(null)
-                setResult(null)
-                try {
-                  const data = await runAgentWorkflowTrace(payload)
-                  setResult(data)
-                  setStatus('done')
-                } catch (e) {
-                  setError(e?.message || 'Request failed')
-                  setStatus('error')
-                }
-              }}
-            >
-              {status === 'loading' ? 'Running…' : 'Run Agent Workflow'}
-            </button>
-            <button
-              type="button"
-              className="btn btnGhost"
-              onClick={() => {
-                setText('')
-                setResult(null)
-                setError(null)
-                setStatus('idle')
-              }}
-            >
-              Reset
-            </button>
-          </div>
-          {error && (
-            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-              {String(error)}
+      <div className={`mt-4 grid gap-3 ${hideControls ? '' : 'md:grid-cols-2'}`}>
+        {!hideControls ? (
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+            <label className="text-xs font-semibold text-slate-600">
+              Clinical text
+            </label>
+            <textarea
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-200"
+              rows={6}
+              value={text}
+              placeholder="Paste clinical note text here…"
+              onChange={(e) => setText(e.target.value)}
+            />
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                className={`btn btnPrimary text-white ${status === 'loading' ? 'opacity-70 pointer-events-none' : ''}`}
+                onClick={async () => {
+                  const payload = (text || '').trim()
+                  if (!payload) return
+                  setStatus('loading')
+                  setError(null)
+                  setResult(null)
+                  try {
+                    const data = await runAgentWorkflowTrace(payload)
+                    setResult(data)
+                    setStatus('done')
+                  } catch (e) {
+                    setError(e?.message || 'Request failed')
+                    setStatus('error')
+                  }
+                }}
+              >
+                {status === 'loading' ? 'Running…' : 'Run Agent Workflow'}
+              </button>
+              <button
+                type="button"
+                className="btn btnGhost"
+                onClick={() => {
+                  setText('')
+                  setResult(null)
+                  setError(null)
+                  setStatus('idle')
+                }}
+              >
+                Reset
+              </button>
             </div>
-          )}
-        </div>
+            {error && (
+              <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+                {String(error)}
+              </div>
+            )}
+          </div>
+        ) : null}
 
         <div className="rounded-lg border border-slate-200 bg-white p-3">
           <div className="flex items-center justify-between gap-3">

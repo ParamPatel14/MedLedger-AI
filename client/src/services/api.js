@@ -56,6 +56,38 @@ export async function getExplainabilityAudit(auditId) {
   return res.json()
 }
 
+export async function startOneClickWorkflow({
+  text,
+  insurerNumber = '',
+  autoCallIfNeeded = true,
+  overrideGuardrails = false,
+}) {
+  const res = await fetch('/api/process/oneclick/start', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text,
+      insurer_number: insurerNumber || undefined,
+      auto_call_if_needed: Boolean(autoCallIfNeeded),
+      override_guardrails: Boolean(overrideGuardrails),
+    }),
+  })
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(`One-click start failed (${res.status})${txt ? `: ${txt}` : ''}`)
+  }
+  return res.json()
+}
+
+export async function getOneClickWorkflow(runId) {
+  const res = await fetch(`/api/process/oneclick/${encodeURIComponent(runId)}`)
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(`One-click status failed (${res.status})${txt ? `: ${txt}` : ''}`)
+  }
+  return res.json()
+}
+
 async function uploadFile(path, file) {
   const form = new FormData()
   form.append('file', file)

@@ -141,6 +141,7 @@ def _run_oneclick_background(*, run_id: str, payload: OneClickStartIn) -> None:
         svm = state.get("svm") or {}
         governance = state.get("governance") or {}
         svm_status = SvmMiddleware.overall_status(svm if isinstance(svm, dict) else {})
+        override_guardrails = bool(getattr(payload, "override_guardrails", False))
 
         if errors:
             _oneclick_set(run_id, status="error", step="analysis", record_id=str(record.id), output={"errors": errors})
@@ -158,17 +159,21 @@ def _run_oneclick_background(*, run_id: str, payload: OneClickStartIn) -> None:
             decision=decision,
             output={
                 "svm_status": svm_status,
+                "svm": svm,
                 "governance": governance,
                 "payer": validation,
                 "clinical": clinical,
                 "coding": coding,
+                "override_guardrails": override_guardrails,
             },
         )
 
         if needs_review:
-            _oneclick_set(run_id, status="needs_review", step="review")
-            _oneclick_event(run_id, "review", "Stopped for human review (verification/guardrails did not pass)")
-            return
+            if not override_guardrails:
+                _oneclick_set(run_id, status="needs_review", step="review")
+                _oneclick_event(run_id, "review", "Stopped for human review (verification/guardrails did not pass)")
+                return
+            _oneclick_event(run_id, "override", "Override enabled; continuing despite verification/guardrails")
 
         _oneclick_set(run_id, step="submit")
         _oneclick_event(run_id, "submit", "Submitting claim to insurer (simulated)")
@@ -490,7 +495,7 @@ def get_explainability_audit(audit_id: str, db: Session = Depends(get_db)) -> Ex
 @router.post("/process/oneclick/start", response_model=OneClickStartOut)
 def start_oneclick(payload: OneClickStartIn, background: BackgroundTasks) -> OneClickStartOut:
     rid = str(uuid.uuid4())
-    _oneclick_set(rid, run_id=rid, status="queued", step="queued", events=[], output={})
+    _oneclick_set(rid, status="queued", step="queued", events=[], output={})
     background.add_task(_run_oneclick_background, run_id=rid, payload=payload)
     return OneClickStartOut(run_id=rid, status="queued", step="queued")
 

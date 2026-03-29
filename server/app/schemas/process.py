@@ -134,6 +134,7 @@ class OneClickStartIn(BaseModel):
     text: str = Field(min_length=1)
     insurer_number: Optional[str] = None
     auto_call_if_needed: bool = True
+    override_guardrails: bool = False
 
 
 class OneClickStartOut(BaseModel):
