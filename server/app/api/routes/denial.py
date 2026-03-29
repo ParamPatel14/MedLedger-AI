@@ -3,7 +3,9 @@ from __future__ import annotations
 from datetime import datetime
 import json
 import os
+from pathlib import Path
 import re
+import requests
 import urllib.error
 import urllib.request
 from typing import Any, Dict, List, Optional, Tuple
@@ -336,10 +338,25 @@ def _has_denial_details(ev: Optional[DenialEvent]) -> bool:
         return False
     if str(getattr(ev, "raw_reason_text", "") or "").strip():
         return True
-    if isinstance(getattr(ev, "structured_reasons", None), list) and (ev.structured_reasons or []):
-        return True
     if isinstance(getattr(ev, "rejection_codes", None), list) and (ev.rejection_codes or []):
         return True
+    if isinstance(getattr(ev, "structured_reasons", None), list) and (ev.structured_reasons or []):
+        for item in (ev.structured_reasons or []):
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("denial_reason") or "").strip():
+                return True
+            if str(item.get("root_cause") or "").strip():
+                return True
+            if str(item.get("required_action") or "").strip():
+                return True
+            if bool(item.get("resubmission_possible")) is True:
+                return True
+            try:
+                if float(item.get("confidence") or 0.0) > 0:
+                    return True
+            except Exception:
+                pass
     return False
 
 
@@ -360,8 +377,13 @@ def _denial_summary(claim: Claim, ev: Optional[DenialEvent]) -> Dict[str, Any]:
 
 
 def _vapi_cfg() -> Dict[str, str]:
+    env_key = str((os.getenv("VAPI_API_KEY") or "").strip())
+    dotenv_key = str((_read_dotenv_var("VAPI_API_KEY") or "").strip())
+    api_key = env_key or dotenv_key
+    if _looks_like_uuid(api_key) and dotenv_key and not _looks_like_uuid(dotenv_key):
+        api_key = dotenv_key
     return {
-        "api_key": str((os.getenv("VAPI_API_KEY") or "").strip()),
+        "api_key": api_key,
         "base_url": str((os.getenv("VAPI_BASE_URL") or "").strip() or "https://api.vapi.ai"),
         "assistant_id": str((os.getenv("VAPI_ASSISTANT_ID") or "").strip()),
         "phone_number_id": str((os.getenv("VAPI_PHONE_NUMBER_ID") or "").strip()),
@@ -369,10 +391,51 @@ def _vapi_cfg() -> Dict[str, str]:
     }
 
 
+def _looks_like_uuid(value: str) -> bool:
+    v = str(value or "").strip()
+    if not v:
+        return False
+    return bool(re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}", v))
+
+
+def _dotenv_path() -> Path:
+    try:
+        return Path(__file__).resolve().parents[3] / ".env"
+    except Exception:
+        return Path(".env")
+
+
+def _read_dotenv_var(name: str) -> str:
+    p = _dotenv_path()
+    if not p.exists():
+        return ""
+    try:
+        raw = p.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return ""
+    key = str(name or "").strip()
+    if not key:
+        return ""
+    for line in raw.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or "=" not in s:
+            continue
+        k, v = s.split("=", 1)
+        if k.strip() != key:
+            continue
+        vv = v.strip()
+        if len(vv) >= 2 and ((vv[0] == vv[-1] == '"') or (vv[0] == vv[-1] == "'")):
+            vv = vv[1:-1]
+        return vv.strip()
+    return ""
+
+
 def _vapi_webhook_url() -> str:
     explicit = str((os.getenv("VAPI_WEBHOOK_URL") or "").strip())
     if explicit:
-        return explicit
+        if "/denials/vapi/webhook" in explicit:
+            return explicit
+        return explicit.rstrip("/") + "/denials/vapi/webhook"
     base = str((os.getenv("PUBLIC_BASE_URL") or "").strip())
     if not base:
         base = str((os.getenv("NGROK_URL") or "").strip())
@@ -385,10 +448,16 @@ def _vapi_webhook_url() -> str:
 @router.get("/denials/vapi/status")
 def vapi_status() -> Dict[str, Any]:
     cfg = _vapi_cfg()
+    dotenv_key = str((_read_dotenv_var("VAPI_API_KEY") or "").strip())
     return {
         "ready": bool(cfg["api_key"] and cfg["assistant_id"] and cfg["phone_number_id"]),
         "env": {
             "has_api_key": bool(cfg["api_key"]),
+            "api_key_length": len(cfg["api_key"] or ""),
+            "api_key_looks_like_uuid": _looks_like_uuid(cfg["api_key"]),
+            "dotenv_api_key_present": bool(dotenv_key),
+            "dotenv_api_key_length": len(dotenv_key or ""),
+            "dotenv_api_key_looks_like_uuid": _looks_like_uuid(dotenv_key),
             "has_assistant_id": bool(cfg["assistant_id"]),
             "has_phone_number_id": bool(cfg["phone_number_id"]),
             "has_webhook_url": bool(cfg.get("webhook_url")),
@@ -399,34 +468,118 @@ def vapi_status() -> Dict[str, Any]:
 
 
 
+@router.get("/denials/vapi/debug")
+def vapi_debug(db: Session = Depends(get_db)) -> Dict[str, Any]:
+    cfg = _vapi_cfg()
+    out: Dict[str, Any] = {"ready": bool(cfg["api_key"] and cfg["assistant_id"] and cfg["phone_number_id"])}
+    if not cfg["api_key"]:
+        return {**out, "error": "Missing VAPI_API_KEY"}
+    dotenv_key = str((_read_dotenv_var("VAPI_API_KEY") or "").strip())
+
+    assistant: Any = None
+    phone_number: Any = None
+    assistant_err: Optional[str] = None
+    phone_err: Optional[str] = None
+
+    if cfg["assistant_id"]:
+        try:
+            assistant = _vapi_get_json(f"/assistant/{cfg['assistant_id']}")
+        except Exception as e:
+            assistant_err = str(e)
+    else:
+        assistant_err = "Missing VAPI_ASSISTANT_ID"
+
+    if cfg["phone_number_id"]:
+        try:
+            phone_number = _vapi_get_json(f"/phone-number/{cfg['phone_number_id']}")
+        except Exception as e:
+            phone_err = str(e)
+    else:
+        phone_err = "Missing VAPI_PHONE_NUMBER_ID"
+
+    return {
+        **out,
+        "api_key_length": len(cfg["api_key"] or ""),
+        "api_key_looks_like_uuid": _looks_like_uuid(cfg["api_key"]),
+        "dotenv_api_key_present": bool(dotenv_key),
+        "dotenv_api_key_length": len(dotenv_key or ""),
+        "dotenv_api_key_looks_like_uuid": _looks_like_uuid(dotenv_key),
+        "assistant_ok": bool(assistant and isinstance(assistant, dict) and assistant.get("id")),
+        "phone_number_ok": bool(phone_number and isinstance(phone_number, dict) and phone_number.get("id")),
+        "assistant_error": assistant_err,
+        "phone_number_error": phone_err,
+        "assistant": assistant if isinstance(assistant, dict) else None,
+        "phone_number": phone_number if isinstance(phone_number, dict) else None,
+    }
+
+
+
 def _vapi_post_json(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
     cfg = _vapi_cfg()
     if not cfg["api_key"]:
         raise RuntimeError("Missing VAPI_API_KEY")
     url = cfg["base_url"].rstrip("/") + "/" + path.lstrip("/")
-    body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(
-        url,
-        data=body,
-        method="POST",
-        headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
-    )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as e:
-        raw = ""
-        try:
-            raw = e.read().decode("utf-8", errors="replace")
-        except Exception:
-            raw = ""
-        raise RuntimeError(raw.strip() or f"Vapi request failed ({getattr(e, 'code', 0)})")
+        resp = requests.post(
+            url,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {cfg['api_key']}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "MedLedgerAI/1.0",
+            },
+            timeout=30,
+        )
     except Exception as e:
         raise RuntimeError(str(e))
     try:
-        return json.loads(raw) if raw else {}
+        resp.raise_for_status()
     except Exception:
-        return {"raw": raw}
+        raw = ""
+        try:
+            raw = str(resp.text or "")
+        except Exception:
+            raw = ""
+        raise RuntimeError(raw.strip() or f"Vapi request failed ({getattr(resp, 'status_code', 0)})")
+    try:
+        return resp.json() if resp.content else {}
+    except Exception:
+        return {"raw": str(resp.text or "")}
+
+
+def _vapi_patch_json(path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    cfg = _vapi_cfg()
+    if not cfg["api_key"]:
+        raise RuntimeError("Missing VAPI_API_KEY")
+    url = cfg["base_url"].rstrip("/") + "/" + path.lstrip("/")
+    try:
+        resp = requests.patch(
+            url,
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {cfg['api_key']}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "User-Agent": "MedLedgerAI/1.0",
+            },
+            timeout=30,
+        )
+    except Exception as e:
+        raise RuntimeError(str(e))
+    try:
+        resp.raise_for_status()
+    except Exception:
+        raw = ""
+        try:
+            raw = str(resp.text or "")
+        except Exception:
+            raw = ""
+        raise RuntimeError(raw.strip() or f"Vapi request failed ({getattr(resp, 'status_code', 0)})")
+    try:
+        return resp.json() if resp.content else {}
+    except Exception:
+        return {"raw": str(resp.text or "")}
 
 
 def _vapi_get_json(path: str) -> Dict[str, Any]:
@@ -434,27 +587,66 @@ def _vapi_get_json(path: str) -> Dict[str, Any]:
     if not cfg["api_key"]:
         raise RuntimeError("Missing VAPI_API_KEY")
     url = cfg["base_url"].rstrip("/") + "/" + path.lstrip("/")
-    req = urllib.request.Request(
-        url,
-        method="GET",
-        headers={"Authorization": f"Bearer {cfg['api_key']}", "Content-Type": "application/json"},
-    )
     try:
-        with urllib.request.urlopen(req, timeout=30) as resp:
-            raw = resp.read().decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as e:
-        raw = ""
-        try:
-            raw = e.read().decode("utf-8", errors="replace")
-        except Exception:
-            raw = ""
-        raise RuntimeError(raw.strip() or f"Vapi request failed ({getattr(e, 'code', 0)})")
+        resp = requests.get(
+            url,
+            headers={
+                "Authorization": f"Bearer {cfg['api_key']}",
+                "Accept": "application/json",
+                "User-Agent": "MedLedgerAI/1.0",
+            },
+            timeout=30,
+        )
     except Exception as e:
         raise RuntimeError(str(e))
     try:
-        return json.loads(raw) if raw else {}
+        resp.raise_for_status()
     except Exception:
-        return {"raw": raw}
+        raw = ""
+        try:
+            raw = str(resp.text or "")
+        except Exception:
+            raw = ""
+        raise RuntimeError(raw.strip() or f"Vapi request failed ({getattr(resp, 'status_code', 0)})")
+    try:
+        return resp.json() if resp.content else {}
+    except Exception:
+        return {"raw": str(resp.text or "")}
+
+
+def _ensure_vapi_assistant_server_url(assistant_id: str, server_url: str) -> None:
+    a_id = str(assistant_id or "").strip()
+    url = str(server_url or "").strip()
+    if not a_id or not url:
+        return
+    current: Optional[str] = None
+    try:
+        assistant = _vapi_get_json(f"/assistant/{a_id}")
+        if isinstance(assistant, dict) and isinstance(assistant.get("server"), dict):
+            current = str((assistant.get("server") or {}).get("url") or "").strip() or None
+    except Exception:
+        current = None
+    if current == url:
+        return
+    _vapi_patch_json(f"/assistant/{a_id}", {"server": {"url": url}})
+
+
+def _ensure_vapi_assistant_transcript_enabled(assistant_id: str) -> None:
+    a_id = str(assistant_id or "").strip()
+    if not a_id:
+        return
+    try:
+        assistant = _vapi_get_json(f"/assistant/{a_id}")
+    except Exception:
+        return
+    if not isinstance(assistant, dict):
+        return
+    artifact_plan = assistant.get("artifactPlan") if isinstance(assistant.get("artifactPlan"), dict) else {}
+    transcript_plan = artifact_plan.get("transcriptPlan") if isinstance(artifact_plan.get("transcriptPlan"), dict) else {}
+    if transcript_plan.get("enabled") is True:
+        return
+    new_artifact_plan = {**artifact_plan, "transcriptPlan": {**transcript_plan, "enabled": True}}
+    _vapi_patch_json(f"/assistant/{a_id}", {"artifactPlan": new_artifact_plan})
 
 
 def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
@@ -473,6 +665,27 @@ def _extract_json_object(text: str) -> Optional[Dict[str, Any]]:
     return obj if isinstance(obj, dict) else None
 
 
+def _clean_mojibake(s: str) -> str:
+    if not s:
+        return ""
+    replacements = {
+        "â€”": "—",
+        "â€“": "–",
+        "â€˜": "‘",
+        "â€™": "’",
+        "â€œ": "“",
+        "â€�": "”",
+        "â€¦": "…",
+        "â": "-",
+        "Â ": " ",
+        "Â": "",
+    }
+    out = str(s)
+    for bad, good in replacements.items():
+        out = out.replace(bad, good)
+    return out
+
+
 def _coerce_bool(v: Any) -> Optional[bool]:
     if isinstance(v, bool):
         return v
@@ -487,9 +700,9 @@ def _coerce_bool(v: Any) -> Optional[bool]:
 
 
 def _normalize_vapi_output(obj: Dict[str, Any]) -> Dict[str, Any]:
-    denial_reason = str(obj.get("denial_reason") or "").strip()
-    root_cause = str(obj.get("root_cause") or "").strip()
-    required_action = str(obj.get("required_action") or "").strip()
+    denial_reason = _clean_mojibake(str(obj.get("denial_reason") or "").strip())
+    root_cause = _clean_mojibake(str(obj.get("root_cause") or "").strip())
+    required_action = _clean_mojibake(str(obj.get("required_action") or "").strip())
     resub_ok = _coerce_bool(obj.get("resubmission_possible"))
     conf = _safe_number(obj.get("confidence"))
     if conf < 0:
@@ -531,6 +744,19 @@ def _apply_vapi_structured_output_to_denial_event(db: Session, *, ev: DenialEven
         candidates.append(str(analysis.get("summary")))
 
     artifact = report.get("artifact") if isinstance(report.get("artifact"), dict) else {}
+    extracted_from_artifacts: Dict[str, Any] = {}
+    structured_outputs = artifact.get("structuredOutputs")
+    if isinstance(structured_outputs, dict):
+        for _, data in structured_outputs.items():
+            if not isinstance(data, dict):
+                continue
+            name = str(data.get("name") or "").strip()
+            result = data.get("result")
+            if isinstance(result, dict):
+                extracted_from_artifacts.update(result)
+            elif name:
+                extracted_from_artifacts[name] = result
+
     msgs = artifact.get("messages")
     if isinstance(msgs, list):
         for m in reversed(msgs):
@@ -542,15 +768,18 @@ def _apply_vapi_structured_output_to_denial_event(db: Session, *, ev: DenialEven
                 candidates.append(txt)
 
     parsed_obj: Optional[Dict[str, Any]] = None
-    for c in candidates:
-        parsed_obj = _extract_json_object(c)
-        if parsed_obj is not None:
-            break
+    if extracted_from_artifacts:
+        parsed_obj = extracted_from_artifacts
+    else:
+        for c in candidates:
+            parsed_obj = _extract_json_object(c)
+            if parsed_obj is not None:
+                break
 
     normalized = _normalize_vapi_output(parsed_obj or {})
 
-    meta = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
-    vapi_meta = meta.get("vapi") if isinstance(meta.get("vapi"), dict) else {}
+    meta = dict(ev.source_meta or {}) if isinstance(getattr(ev, "source_meta", None), dict) else {}
+    vapi_meta = dict(meta.get("vapi") or {}) if isinstance(meta.get("vapi"), dict) else {}
     vapi_meta["call_id"] = call_id
     vapi_meta["structured_output"] = normalized
     vapi_meta["last_report"] = report
@@ -599,7 +828,7 @@ def vapi_start_outbound_call(payload: VapiOutboundCallIn, db: Session = Depends(
             ev = None
     if ev is None:
         ev = db.query(DenialEvent).filter(DenialEvent.claim_id == claim.id).order_by(DenialEvent.created_at.desc()).first()
-    if ev is not None and _has_denial_details(ev):
+    if not bool(getattr(payload, "force", False)) and ev is not None and _has_denial_details(ev):
         return {
             "ok": True,
             "skipped": True,
@@ -633,8 +862,15 @@ def vapi_start_outbound_call(payload: VapiOutboundCallIn, db: Session = Depends(
         "customer": {"number": insurer_number},
         "assistantOverrides": {"variableValues": merged_vars},
     }
+    try:
+        _ensure_vapi_assistant_transcript_enabled(assistant_id=assistant_id)
+    except Exception:
+        pass
     if cfg.get("webhook_url"):
-        call_payload["webhookUrl"] = cfg["webhook_url"]
+        try:
+            _ensure_vapi_assistant_server_url(assistant_id=assistant_id, server_url=cfg["webhook_url"])
+        except Exception:
+            pass
 
     try:
         created = _vapi_post_json("/call", call_payload)
@@ -642,7 +878,7 @@ def vapi_start_outbound_call(payload: VapiOutboundCallIn, db: Session = Depends(
         raise HTTPException(status_code=502, detail=str(e))
 
     call_id = str((created or {}).get("id") or "").strip()
-    meta = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
+    meta = dict(ev.source_meta or {}) if isinstance(getattr(ev, "source_meta", None), dict) else {}
     meta["vapi"] = {
         "call_id": call_id,
         "insurer_number": insurer_number,
@@ -691,8 +927,9 @@ def vapi_sync_call(payload: Dict[str, Any], db: Session = Depends(get_db)) -> Di
     if ev is None:
         return {"ok": True, "synced": False, "reason": "no_matching_denial_event", "call_id": call_id, "call": call_obj}
 
-    meta = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
-    vapi_meta = meta.get("vapi") if isinstance(meta.get("vapi"), dict) else {}
+    meta = dict(ev.source_meta or {}) if isinstance(getattr(ev, "source_meta", None), dict) else {}
+    vapi_meta = dict(meta.get("vapi") or {}) if isinstance(meta.get("vapi"), dict) else {}
+    vapi_meta["call_id"] = call_id
     vapi_meta["synced_at"] = datetime.utcnow().isoformat()
     vapi_meta["call_get_response"] = call_obj
     meta["vapi"] = vapi_meta
@@ -713,16 +950,16 @@ def vapi_sync_call(payload: Dict[str, Any], db: Session = Depends(get_db)) -> Di
             agent_out = agent.run_for_denial_event(db, claim_id=ev.claim_id, denial_event_id=ev.id)
             ran_agent = True
         except Exception as e:
-            meta2 = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
-            vapi2 = meta2.get("vapi") if isinstance(meta2.get("vapi"), dict) else {}
+            meta2 = dict(ev.source_meta or {}) if isinstance(getattr(ev, "source_meta", None), dict) else {}
+            vapi2 = dict(meta2.get("vapi") or {}) if isinstance(meta2.get("vapi"), dict) else {}
             vapi2["agent_error"] = str(e)
             meta2["vapi"] = vapi2
             ev.source_meta = meta2
             db.commit()
 
     if ran_agent:
-        meta3 = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
-        vapi3 = meta3.get("vapi") if isinstance(meta3.get("vapi"), dict) else {}
+        meta3 = dict(ev.source_meta or {}) if isinstance(getattr(ev, "source_meta", None), dict) else {}
+        vapi3 = dict(meta3.get("vapi") or {}) if isinstance(meta3.get("vapi"), dict) else {}
         vapi3["agent_run"] = agent_out
         meta3["vapi"] = vapi3
         ev.source_meta = meta3
@@ -779,16 +1016,16 @@ async def vapi_webhook(request: Request, db: Session = Depends(get_db)) -> Dict[
             agent_out = agent.run_for_denial_event(db, claim_id=ev.claim_id, denial_event_id=ev.id)
             ran_agent = True
         except Exception as e:
-            meta2 = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
-            vapi2 = meta2.get("vapi") if isinstance(meta2.get("vapi"), dict) else {}
+            meta2 = dict(ev.source_meta or {}) if isinstance(getattr(ev, "source_meta", None), dict) else {}
+            vapi2 = dict(meta2.get("vapi") or {}) if isinstance(meta2.get("vapi"), dict) else {}
             vapi2["agent_error"] = str(e)
             meta2["vapi"] = vapi2
             ev.source_meta = meta2
             db.commit()
 
     if ran_agent:
-        meta3 = ev.source_meta if isinstance(getattr(ev, "source_meta", None), dict) else {}
-        vapi3 = meta3.get("vapi") if isinstance(meta3.get("vapi"), dict) else {}
+        meta3 = dict(ev.source_meta or {}) if isinstance(getattr(ev, "source_meta", None), dict) else {}
+        vapi3 = dict(meta3.get("vapi") or {}) if isinstance(meta3.get("vapi"), dict) else {}
         vapi3["agent_run"] = agent_out
         meta3["vapi"] = vapi3
         ev.source_meta = meta3

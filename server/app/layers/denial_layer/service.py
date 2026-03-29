@@ -95,7 +95,9 @@ class DenialManagementAgent:
             state["denial_reasons"] = [r.to_dict() for r in reasons]
             ev = db.query(DenialEvent).filter(DenialEvent.id == int(state.get("denial_event_id"))).first()
             if ev is not None:
-                ev.structured_reasons = state["denial_reasons"]
+                existing = ev.structured_reasons if isinstance(getattr(ev, "structured_reasons", None), list) else []
+                vapi_items = [x for x in (existing or []) if isinstance(x, dict) and str(x.get("type") or "").strip() == "vapi_call"]
+                ev.structured_reasons = [*vapi_items, *state["denial_reasons"]]
                 db.commit()
             return state
 

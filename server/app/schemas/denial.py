@@ -54,6 +54,7 @@ class VapiOutboundCallIn(BaseModel):
     claim_id: str
     insurer_number: str
     denial_event_id: Optional[int] = None
+    force: bool = False
     assistant_id: Optional[str] = None
     phone_number_id: Optional[str] = None
     variable_values: Dict[str, Any] = Field(default_factory=dict)
