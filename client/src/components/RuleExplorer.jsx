@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { History, Search } from 'lucide-react'
 import { getRuleHistory, listRules } from '../services/api'
+import { Button } from './ui/button'
 
 function fmt(x) {
   if (x === null || x === undefined) return ''
@@ -55,105 +57,142 @@ export default function RuleExplorer() {
     return Array.isArray(events) ? events : []
   }, [history])
 
+  const inputStyle = {
+    width: '100%',
+    borderRadius: 'var(--radius-sm)',
+    border: '1px solid var(--border)',
+    background: 'var(--surface)',
+    padding: '8px 12px',
+    fontSize: 13,
+    color: 'var(--text)',
+    outline: 'none',
+    boxSizing: 'border-box',
+  }
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="text-sm font-semibold text-slate-800">Search Rules</div>
-
-      <div className="mt-3 grid gap-3 md:grid-cols-3">
+    <div className="panel">
+      <div className="panelHead">
         <div>
-          <label className="text-xs font-semibold text-slate-700">TPA</label>
-          <input
-            value={tpa}
-            onChange={(e) => setTpa(e.target.value)}
-            placeholder="e.g., ACME"
-            className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-          />
-        </div>
-        <div>
-          <label className="text-xs font-semibold text-slate-700">Category</label>
-          <input
-            value={category}
-            onChange={(e) => setCategory(e.target.value)}
-            placeholder="e.g., room_rent"
-            className="mt-1 w-full rounded-md border border-slate-200 px-3 py-2 text-sm"
-          />
-        </div>
-        <div className="flex items-end">
-          <button type="button" className="btn btnPrimary w-full" onClick={runSearch} disabled={loading}>
-            {loading ? 'Searching…' : 'Search'}
-          </button>
+          <div className="panelHeadTitle">Rule Explorer</div>
+          <div className="panelHeadSub">Search and inspect payer rules by TPA and category.</div>
         </div>
       </div>
+      <div className="panelBody">
 
-      {error ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div> : null}
-
-      <div className="mt-4 overflow-auto">
-        <table className="min-w-full text-left text-xs">
-          <thead>
-            <tr className="border-b border-slate-200 text-[11px] text-slate-600">
-              <th className="py-2 pr-4 font-semibold">TPA</th>
-              <th className="py-2 pr-4 font-semibold">Category</th>
-              <th className="py-2 pr-4 font-semibold">Type</th>
-              <th className="py-2 pr-4 font-semibold">Value</th>
-              <th className="py-2 pr-4 font-semibold">Unit</th>
-              <th className="py-2 pr-4 font-semibold">Confidence</th>
-              <th className="py-2 pr-2 font-semibold">Source</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length ? (
-              items.map((r) => (
-                <tr
-                  key={r.id}
-                  className={`cursor-pointer border-b border-slate-100 last:border-0 hover:bg-slate-50 ${
-                    selectedRuleId === r.id ? 'bg-slate-50' : ''
-                  }`}
-                  onClick={() => selectRule(r.id)}
-                >
-                  <td className="py-2 pr-4 text-slate-700">{fmt(r.tpa_name)}</td>
-                  <td className="py-2 pr-4 text-slate-700">{fmt(r.category)}</td>
-                  <td className="py-2 pr-4 text-slate-700">{fmt(r.rule_type)}</td>
-                  <td className="py-2 pr-4 font-semibold text-slate-900">{fmt(r.value_text || r.value)}</td>
-                  <td className="py-2 pr-4 text-slate-700">{fmt(r.unit)}</td>
-                  <td className="py-2 pr-4 tabular-nums text-slate-700">{fmt(r.confidence)}</td>
-                  <td className="py-2 pr-2 text-slate-700">{fmt(r.source)}</td>
-                </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={7} className="py-5 text-center text-sm text-slate-500">
-                  No rules found
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="mt-4 rounded-lg border border-slate-200 p-3">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="text-xs font-semibold text-slate-700">Rule History</div>
-          <div className="text-[11px] text-slate-500">{selectedRuleId ? `Rule: ${selectedRuleId}` : 'Select a rule'}</div>
+        {/* Search form */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr auto', gap: 12, alignItems: 'end', marginBottom: 16 }}>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', color: 'var(--text-muted)', marginBottom: 6 }}>TPA</label>
+            <input
+              value={tpa}
+              onChange={(e) => setTpa(e.target.value)}
+              placeholder="e.g., ACME"
+              style={inputStyle}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.4px', color: 'var(--text-muted)', marginBottom: 6 }}>Category</label>
+            <input
+              value={category}
+              onChange={(e) => setCategory(e.target.value)}
+              placeholder="e.g., room_rent"
+              style={inputStyle}
+              onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+            />
+          </div>
+          <Button onClick={runSearch} disabled={loading}>
+            <Search size={13} />
+            {loading ? 'Searching...' : 'Search'}
+          </Button>
         </div>
 
-        {historyLoading ? <div className="mt-2 text-sm text-slate-500">Loading…</div> : null}
-        {!historyLoading && selectedRuleId && !selectedEvents.length ? <div className="mt-2 text-sm text-slate-500">No history</div> : null}
-
-        {selectedEvents.length ? (
-          <div className="mt-2 max-h-[220px] space-y-2 overflow-auto pr-1 text-xs">
-            {selectedEvents.map((e) => (
-              <div key={e.id} className="rounded-md border border-slate-100 bg-slate-50 px-2 py-2">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-semibold text-slate-800">
-                    v{fmt(e.from_version)} → v{fmt(e.to_version)}
-                  </div>
-                  <div className="text-[11px] text-slate-500">{fmt(e.changed_at)}</div>
-                </div>
-                <div className="mt-1 truncate text-[11px] text-slate-700">{JSON.stringify(e.diff || {})}</div>
-              </div>
-            ))}
+        {error ? (
+          <div style={{ marginBottom: 14, borderRadius: 6, border: '1px solid #FECACA', background: '#FEF2F2', padding: '8px 12px', fontSize: 12, color: '#991B1B' }}>
+            {error}
           </div>
         ) : null}
+
+        {/* Rules table */}
+        <div style={{ overflowX: 'auto' }}>
+          <table className="dataTable">
+            <thead>
+              <tr>
+                <th>TPA</th>
+                <th>Category</th>
+                <th>Type</th>
+                <th>Value</th>
+                <th>Unit</th>
+                <th>Confidence</th>
+                <th>Source</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.length ? (
+                items.map((r) => (
+                  <tr
+                    key={r.id}
+                    style={{ cursor: 'pointer', background: selectedRuleId === r.id ? 'var(--primary-light)' : undefined }}
+                    onClick={() => selectRule(r.id)}
+                  >
+                    <td>{fmt(r.tpa_name)}</td>
+                    <td>{fmt(r.category)}</td>
+                    <td>{fmt(r.rule_type)}</td>
+                    <td style={{ fontWeight: 600 }}>{fmt(r.value_text || r.value)}</td>
+                    <td>{fmt(r.unit)}</td>
+                    <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(r.confidence)}</td>
+                    <td>{fmt(r.source)}</td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={7} style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '20px 0' }}>
+                    No rules found
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Rule history panel */}
+        <div style={{ marginTop: 16, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+              <History size={13} style={{ color: 'var(--primary)' }} />
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-strong)' }}>Rule History</div>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {selectedRuleId ? `Rule: ${selectedRuleId}` : 'Select a row above'}
+            </div>
+          </div>
+
+          {historyLoading ? (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>Loading...</div>
+          ) : null}
+          {!historyLoading && selectedRuleId && !selectedEvents.length ? (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>No history found</div>
+          ) : null}
+
+          {selectedEvents.length ? (
+            <div style={{ maxHeight: 220, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {selectedEvents.map((e) => (
+                <div key={e.id} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', padding: '8px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)' }}>
+                      v{fmt(e.from_version)} &rarr; v{fmt(e.to_version)}
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{fmt(e.changed_at)}</div>
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {JSON.stringify(e.diff || {})}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+
       </div>
     </div>
   )

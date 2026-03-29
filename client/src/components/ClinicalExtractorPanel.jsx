@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Play, RotateCcw, Upload, FileText, PenLine, Workflow } from 'lucide-react'
 import AgentWorkflowPanel from './AgentWorkflowPanel'
+import { Button } from './ui/button'
 import {
   getOneClickWorkflow,
   overrideOneClickWorkflow,
@@ -239,14 +241,13 @@ export default function ClinicalExtractorPanel() {
               Upload → analysis + verification + guardrails → submit → denial recovery → resubmit → approve (simulated).
             </div>
           </div>
-          <button
-            type="button"
-            className="btn btnPrimary text-white"
+          <Button
             onClick={() => startOneClick(clinicalText)}
             disabled={!clinicalText.trim() || oneClickState === 'starting' || oneClickState === 'polling'}
           >
+            <Workflow size={14} />
             {oneClickState === 'starting' ? 'Starting…' : oneClickState === 'polling' ? 'Running…' : 'Run Full Workflow'}
-          </button>
+          </Button>
         </div>
 
         <div className="mt-3 grid gap-3 lg:grid-cols-2">
@@ -301,27 +302,27 @@ export default function ClinicalExtractorPanel() {
                   </div>
                 ) : null}
                 <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    className="btn btnSecondary"
+                  <Button
+                    variant="outline"
+                    size="sm"
                     onClick={() => pollOneClick(oneClickRunId)}
                     disabled={!oneClickRunId}
                   >
-                    Refresh Status
-                  </button>
+                    <RotateCcw size={13} />
+                    Refresh
+                  </Button>
                   {String(oneClickData?.status || '') === 'needs_review' ? (
-                    <button
-                      type="button"
-                      className="btn btnPrimary text-white"
+                    <Button
+                      size="sm"
                       onClick={() => overrideOneClick(oneClickRunId)}
                       disabled={!oneClickRunId || oneClickState === 'starting' || oneClickState === 'polling'}
                     >
                       Continue (Override Guardrails)
-                    </button>
+                    </Button>
                   ) : null}
-                  <button
-                    type="button"
-                    className="btn btnGhost"
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     onClick={() => {
                       setOneClickRunId('')
                       setOneClickData(null)
@@ -330,7 +331,7 @@ export default function ClinicalExtractorPanel() {
                     }}
                   >
                     Clear
-                  </button>
+                  </Button>
                 </div>
 
                 <details className="mt-3">
@@ -374,37 +375,34 @@ export default function ClinicalExtractorPanel() {
         ) : null}
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-3">
-        <button
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 'var(--radius)', padding: 4, width: 'fit-content' }}>
+        <Button
           type="button"
-          className={`btn ${inputMode === 'text' ? 'btnPrimary text-white' : 'btnGhost'}`}
-          onClick={() => {
-            setInputMode('text')
-            setLoadState('idle')
-          }}
+          variant={inputMode === 'text' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => { setInputMode('text'); setLoadState('idle') }}
         >
+          <FileText size={13} />
           Paste Text
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={`btn ${inputMode === 'pdf' ? 'btnPrimary text-white' : 'btnGhost'}`}
-          onClick={() => {
-            setInputMode('pdf')
-            setLoadState('idle')
-          }}
+          variant={inputMode === 'pdf' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => { setInputMode('pdf'); setLoadState('idle') }}
         >
+          <Upload size={13} />
           Upload PDF
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
-          className={`btn ${inputMode === 'handwritten' ? 'btnPrimary text-white' : 'btnGhost'}`}
-          onClick={() => {
-            setInputMode('handwritten')
-            setLoadState('idle')
-          }}
+          variant={inputMode === 'handwritten' ? 'default' : 'ghost'}
+          size="sm"
+          onClick={() => { setInputMode('handwritten'); setLoadState('idle') }}
         >
+          <PenLine size={13} />
           Handwritten
-        </button>
+        </Button>
       </div>
 
       {inputMode === 'pdf' && (
@@ -415,14 +413,15 @@ export default function ClinicalExtractorPanel() {
             className="block text-sm text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:border-sky-300"
             onChange={(e) => setPdfFile(e.target.files?.[0] || null)}
           />
-          <button
+          <Button
             type="button"
-            className="btn btnSecondary"
+            variant="outline"
+            size="sm"
             onClick={loadFromPdf}
             disabled={!pdfFile || loadState === 'loading'}
           >
             {loadState === 'loading' ? 'Reading…' : 'Read PDF'}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -434,14 +433,15 @@ export default function ClinicalExtractorPanel() {
             className="block text-sm text-slate-700 file:mr-3 file:rounded-lg file:border file:border-slate-200 file:bg-white file:px-3 file:py-2 file:text-sm file:font-medium file:text-slate-700 hover:file:border-sky-300"
             onChange={(e) => setHandwrittenFile(e.target.files?.[0] || null)}
           />
-          <button
+          <Button
             type="button"
-            className="btn btnSecondary"
+            variant="outline"
+            size="sm"
             onClick={loadFromHandwritten}
             disabled={!handwrittenFile || loadState === 'loading'}
           >
             {loadState === 'loading' ? 'Reading…' : 'Read Prescription'}
-          </button>
+          </Button>
         </div>
       )}
 
@@ -468,13 +468,13 @@ export default function ClinicalExtractorPanel() {
                 ? 'Extraction Failed'
                 : ''}
         </div>
-        <button
-          className="btn btnPrimary text-white"
+        <Button
           onClick={run}
           disabled={!clinicalText.trim() || nlpState === 'loading'}
         >
-          {nlpState === 'loading' ? 'Extracting...' : 'Run Extraction'}
-        </button>
+          <Play size={13} />
+          {nlpState === 'loading' ? 'Extracting…' : 'Run Extraction'}
+        </Button>
       </div>
 
       {nlpResult && !nlpResult.error && (

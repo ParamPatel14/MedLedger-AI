@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { getRuleConflicts } from '../services/api'
+import { Button } from './ui/button'
 
 function fmt(x) {
   if (x === null || x === undefined) return ''
@@ -30,48 +32,47 @@ export default function RuleConflictViewer() {
   }, [refresh])
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-slate-800">Conflicting Rules</div>
-        <button type="button" className="btn btnGhost" onClick={refresh} disabled={loading}>
+    <div className="panel">
+      <div className="panelHead">
+        <div>
+          <div className="panelHeadTitle">Conflicting Rules</div>
+          <div className="panelHeadSub">Groups of rules with conflicting values for the same TPA and category.</div>
+        </div>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+          <RefreshCw size={13} />
           {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        </Button>
       </div>
+      <div className="panelBody">
 
-      {error ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div> : null}
+      {error ? <div style={{ marginBottom: 14, borderRadius: 6, border: '1px solid #FECACA', background: '#FEF2F2', padding: '8px 12px', fontSize: 12, color: '#991B1B' }}>{error}</div> : null}
 
-      <div className="mt-4 space-y-3">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {groups.length ? (
           groups.map((g, idx) => (
-            <div key={`${g.tpa_name}-${g.category}-${g.rule_type}-${idx}`} className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-slate-900">
+            <div key={`${g.tpa_name}-${g.category}-${g.rule_type}-${idx}`} style={{ border: '1px solid #FDE68A', borderRadius: 'var(--radius)', background: '#FFFBEB', overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: '1px solid #FDE68A', background: '#FEF3C7' }}>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-strong)' }}>
                   {fmt(g.tpa_name)} · {fmt(g.category)} · {fmt(g.rule_type)}
-                </div>
-                <div className="text-xs text-amber-800">{fmt(g.reason || 'potential_conflict')}</div>
+                </span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: '#92400E', background: '#FDE68A', borderRadius: 4, padding: '2px 8px' }}>{fmt(g.reason || 'potential_conflict')}</span>
               </div>
-
-              <div className="mt-2 overflow-auto">
-                <table className="min-w-full text-left text-xs">
+              <div style={{ overflowX: 'auto' }}>
+                <table className="dataTable" style={{ background: 'transparent' }}>
                   <thead>
-                    <tr className="border-b border-amber-200 text-[11px] text-slate-600">
-                      <th className="py-2 pr-4 font-semibold">Value</th>
-                      <th className="py-2 pr-4 font-semibold">Unit</th>
-                      <th className="py-2 pr-4 font-semibold">Confidence</th>
-                      <th className="py-2 pr-4 font-semibold">Conditions</th>
-                      <th className="py-2 pr-4 font-semibold">Source</th>
-                      <th className="py-2 pr-2 font-semibold">Updated</th>
+                    <tr style={{ background: 'transparent' }}>
+                      <th>Value</th><th>Unit</th><th>Confidence</th><th>Conditions</th><th>Source</th><th>Updated</th>
                     </tr>
                   </thead>
                   <tbody>
                     {(Array.isArray(g.rules) ? g.rules : []).map((r) => (
-                      <tr key={r.id} className="border-b border-amber-100 last:border-0">
-                        <td className="py-2 pr-4 font-semibold text-slate-900">{fmt(r.value_text || r.value)}</td>
-                        <td className="py-2 pr-4 text-slate-700">{fmt(r.unit)}</td>
-                        <td className="py-2 pr-4 tabular-nums text-slate-700">{fmt(r.confidence)}</td>
-                        <td className="py-2 pr-4 text-slate-700">{JSON.stringify(r.conditions || {})}</td>
-                        <td className="py-2 pr-4 text-slate-700">{fmt(r.source)}</td>
-                        <td className="py-2 pr-2 text-slate-500">{fmt(r.updated_at || '')}</td>
+                      <tr key={r.id}>
+                        <td style={{ fontWeight: 600 }}>{fmt(r.value_text || r.value)}</td>
+                        <td>{fmt(r.unit)}</td>
+                        <td style={{ fontVariantNumeric: 'tabular-nums' }}>{fmt(r.confidence)}</td>
+                        <td style={{ maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{JSON.stringify(r.conditions || {})}</td>
+                        <td>{fmt(r.source)}</td>
+                        <td style={{ color: 'var(--text-muted)' }}>{fmt(r.updated_at || '')}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -80,8 +81,9 @@ export default function RuleConflictViewer() {
             </div>
           ))
         ) : (
-          <div className="text-sm text-slate-500">No conflicts detected</div>
+          <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '8px 0' }}>No conflicts detected.</div>
         )}
+      </div>
       </div>
     </div>
   )

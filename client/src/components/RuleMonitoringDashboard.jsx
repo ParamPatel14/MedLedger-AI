@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { getRuleSummary, getRuleUpdates } from '../services/api'
+import { Button } from './ui/button'
 
 function numberOrZero(x) {
   const n = Number(x)
@@ -45,74 +47,66 @@ export default function RuleMonitoringDashboard() {
   }, [refresh])
 
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="text-sm font-semibold text-slate-800">Active Rules & Recent Updates</div>
-        <button type="button" className="btn btnGhost" onClick={refresh} disabled={loading}>
+    <div className="panel">
+      <div className="panelHead">
+        <div>
+          <div className="panelHeadTitle">Active Rules &amp; Recent Updates</div>
+          <div className="panelHeadSub">Sync from web, email, or PDF sources.</div>
+        </div>
+        <Button variant="outline" size="sm" onClick={refresh} disabled={loading}>
+          <RefreshCw size={13} />
           {loading ? 'Refreshing…' : 'Refresh'}
-        </button>
+        </Button>
       </div>
+      <div className="panelBody">
 
-      {error ? <div className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">{error}</div> : null}
+      {error ? <div style={{ marginBottom: 16, borderRadius: 6, border: '1px solid #FECACA', background: '#FEF2F2', padding: '8px 12px', fontSize: 12, color: '#991B1B' }}>{error}</div> : null}
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
-        <div className="rounded-lg border border-slate-200 p-3">
-          <div className="text-xs text-slate-500">Active rules</div>
-          <div className="mt-1 text-2xl font-semibold text-slate-900">{numberOrZero(summary?.total_active)}</div>
-          <div className="mt-2 text-xs text-slate-500">By source</div>
-          <div className="mt-1 space-y-1 text-xs">
-            {topSources.length ? (
-              topSources.map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between gap-2">
-                  <span className="truncate text-slate-700">{k || 'unknown'}</span>
-                  <span className="tabular-nums text-slate-900">{v}</span>
-                </div>
-              ))
-            ) : (
-              <div className="text-slate-400">No data</div>
-            )}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 14 }}>
+        {/* Active rules card */}
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 6 }}>Active Rules</div>
+          <div style={{ fontSize: 32, fontWeight: 800, color: 'var(--primary)', letterSpacing: '-0.8px', lineHeight: 1 }}>{numberOrZero(summary?.total_active)}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 12, marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.4px' }}>By Source</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {topSources.length ? topSources.map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text)' }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-muted)' }}>{k || 'unknown'}</span>
+                <span style={{ fontWeight: 700, color: 'var(--text-strong)', fontVariantNumeric: 'tabular-nums' }}>{v}</span>
+              </div>
+            )) : <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>No data</div>}
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 p-3">
-          <div className="text-xs text-slate-500">Top TPAs (active rules)</div>
-          <div className="mt-2 space-y-1 text-xs">
-            {topTpas.length ? (
-              topTpas.map(([k, v]) => (
-                <div key={k} className="flex items-center justify-between gap-2">
-                  <span className="truncate text-slate-700">{k || 'unknown'}</span>
-                  <span className="tabular-nums text-slate-900">{v}</span>
-                </div>
-              ))
-            ) : (
-              <div className="text-slate-400">No data</div>
-            )}
+        {/* Top TPAs card */}
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 10 }}>Top TPAs</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {topTpas.length ? topTpas.map(([k, v]) => (
+              <div key={k} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text)', maxWidth: '70%' }}>{k || 'unknown'}</span>
+                <span style={{ fontWeight: 700, color: 'var(--primary)', fontVariantNumeric: 'tabular-nums', background: 'var(--primary-light)', border: '1px solid var(--primary-border)', borderRadius: 4, padding: '1px 7px', fontSize: 11 }}>{v}</span>
+              </div>
+            )) : <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>No data</div>}
           </div>
         </div>
 
-        <div className="rounded-lg border border-slate-200 p-3">
-          <div className="text-xs text-slate-500">Recent updates</div>
-          <div className="mt-2 max-h-[280px] space-y-2 overflow-auto pr-1 text-xs">
-            {updates.length ? (
-              updates.map((u) => (
-                <div key={u.id} className="rounded-md border border-slate-100 bg-slate-50 px-2 py-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="font-semibold text-slate-800">
-                      {(u.tpa_name || 'TPA')} · {(u.category || 'category')} · {(u.rule_type || 'type')}
-                    </div>
-                    <div className="text-[11px] text-slate-500">
-                      v{numberOrZero(u.from_version)} → v{numberOrZero(u.to_version)}
-                    </div>
-                  </div>
-                  <div className="mt-1 text-[11px] text-slate-500">{String(u.changed_at || '')}</div>
-                  <div className="mt-1 truncate text-[11px] text-slate-700">{JSON.stringify(u.diff || {})}</div>
+        {/* Recent updates card */}
+        <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 16 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 10 }}>Recent Updates</div>
+          <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            {updates.length ? updates.map((u) => (
+              <div key={u.id} style={{ border: '1px solid var(--border)', borderRadius: 6, padding: '8px 10px', background: 'white' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)' }}>{u.tpa_name || 'TPA'} · {u.category || 'category'}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>v{numberOrZero(u.from_version)} → v{numberOrZero(u.to_version)}</span>
                 </div>
-              ))
-            ) : (
-              <div className="text-slate-400">No updates found</div>
-            )}
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{String(u.changed_at || '')}</div>
+              </div>
+            )) : <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>No updates found</div>}
           </div>
         </div>
+      </div>
       </div>
     </div>
   )

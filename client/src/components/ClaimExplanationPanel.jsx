@@ -1,5 +1,7 @@
 import { useMemo, useState } from 'react'
+import { Brain, ChevronDown, ChevronUp, FileSearch, RefreshCw, RotateCcw, ShieldCheck } from 'lucide-react'
 import { getExplainabilityAudit, runClaimExplain } from '../services/api'
+import { Button } from './ui/button'
 
 function formatScore(value) {
   const n = Number(value)
@@ -7,13 +9,13 @@ function formatScore(value) {
   return n.toFixed(2)
 }
 
-function decisionColor(decision) {
+function decisionBadgeClass(decision) {
   const d = String(decision || '').toUpperCase()
-  if (d === 'APPROVE') return 'bg-emerald-50 text-emerald-700 border-emerald-200'
-  if (d === 'WARN') return 'bg-amber-50 text-amber-800 border-amber-200'
-  if (d === 'ESCALATE') return 'bg-orange-50 text-orange-700 border-orange-200'
-  if (d === 'BLOCK') return 'bg-rose-50 text-rose-700 border-rose-200'
-  return 'bg-slate-50 text-slate-700 border-slate-200'
+  if (d === 'APPROVE') return 'statusBadge approved'
+  if (d === 'WARN') return 'statusBadge query'
+  if (d === 'ESCALATE') return 'statusBadge resubmitted'
+  if (d === 'BLOCK') return 'statusBadge denied'
+  return 'statusBadge'
 }
 
 function typeTitle(type) {
@@ -33,29 +35,29 @@ function ExplanationItem({ item }) {
   const [open, setOpen] = useState(false)
   const details = item?.details && typeof item.details === 'object' ? item.details : null
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-xs font-semibold text-slate-700">
+    <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface)', padding: '10px 12px', marginBottom: 6 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-strong)' }}>
           Confidence {formatScore(item?.confidence)}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[11px] text-slate-500">{String(item?.type || '')}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{String(item?.type || '')}</span>
           {details ? (
             <button
               type="button"
-              className="text-[11px] text-sky-700 underline"
+              style={{ fontSize: 11, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 3, padding: 0 }}
               onClick={() => setOpen((v) => !v)}
             >
-              {open ? 'Hide details' : 'Show details'}
+              {open ? <><ChevronUp size={11} />Hide</> : <><ChevronDown size={11} />Details</>}
             </button>
           ) : null}
         </div>
       </div>
-      <div className="mt-1 text-sm text-slate-800">
+      <div style={{ marginTop: 6, fontSize: 13, color: 'var(--text)' }}>
         {String(item?.explanation || '')}
       </div>
       {open && details ? (
-        <pre className="mt-2 max-h-48 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-2 text-[11px] text-slate-700">
+        <pre style={{ marginTop: 8, maxHeight: 192, overflow: 'auto', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: '8px 10px', fontSize: 11, color: 'var(--text-muted)' }}>
           {JSON.stringify(details, null, 2)}
         </pre>
       ) : null}
@@ -66,10 +68,10 @@ function ExplanationItem({ item }) {
 function ExplanationList({ items }) {
   const list = Array.isArray(items) ? items : []
   if (!list.length) {
-    return <div className="text-xs text-slate-400">No explanations available</div>
+    return <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '6px 0' }}>No explanations available</div>
   }
   return (
-    <div className="space-y-2">
+    <div>
       {list.map((x, i) => <ExplanationItem key={`${x?.type || 'exp'}-${i}`} item={x} />)}
     </div>
   )
@@ -128,64 +130,59 @@ export default function ClaimExplanationPanel() {
   }, [result])
 
   return (
-    <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="panel">
+      <div className="panelHead">
         <div>
-          <div className="text-base font-semibold text-slate-800">
-            Claim Explanation Panel
-          </div>
-          <p className="text-xs text-slate-500">
-            Diagnosis reasoning, code assignment logic, and rule validation explanations.
-          </p>
+          <div className="panelHeadTitle">Claim Explanation Panel</div>
+          <div className="panelHeadSub">Diagnosis reasoning, code assignment logic, and rule validation explanations.</div>
         </div>
         {result?.audit_id ? (
-          <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-600">
+          <span style={{ fontSize: 11, color: 'var(--text-muted)', background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 20, padding: '3px 10px' }}>
             Audit {String(result.audit_id).slice(0, 8)}
           </span>
         ) : null}
       </div>
+      <div className="panelBody">
 
-      <div className="mt-4 grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-          <label className="text-xs font-semibold text-slate-600">
-            Clinical text
-          </label>
-          <textarea
-            className="mt-2 w-full rounded-lg border border-slate-200 bg-white p-3 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-sky-200"
-            rows={6}
-            value={text}
-            placeholder="Paste clinical note text here…"
-            onChange={(e) => setText(e.target.value)}
-          />
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={`btn btnPrimary text-white ${status === 'loading' ? 'opacity-70 pointer-events-none' : ''}`}
-              onClick={async () => {
-                const payload = (text || '').trim()
-                if (!payload) return
-                setStatus('loading')
-                setError(null)
-                setResult(null)
-                setAudit(null)
-                setAuditError(null)
-                setAuditStatus('idle')
-                try {
-                  const data = await runClaimExplain(payload)
-                  setResult(data)
-                  setStatus('done')
-                } catch (e) {
-                  setError(e?.message || 'Request failed')
-                  setStatus('error')
-                }
-              }}
-            >
-              {status === 'loading' ? 'Explaining…' : 'Explain Claim'}
-            </button>
-            <button
-              type="button"
-              className="btn btnGhost"
-              onClick={() => {
+        {/* Input + Decision row */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 14 }}>
+            <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.4px' }}>
+              Clinical Text
+            </label>
+            <textarea
+              style={{ marginTop: 8, width: '100%', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--surface)', padding: '10px 12px', fontSize: 13, color: 'var(--text)', outline: 'none', resize: 'vertical', boxSizing: 'border-box' }}
+              rows={6}
+              value={text}
+              placeholder="Paste clinical note text here..."
+              onChange={(e) => setText(e.target.value)}
+            />
+            <div style={{ marginTop: 10, display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+              <Button
+                disabled={status === 'loading'}
+                onClick={async () => {
+                  const payload = (text || '').trim()
+                  if (!payload) return
+                  setStatus('loading')
+                  setError(null)
+                  setResult(null)
+                  setAudit(null)
+                  setAuditError(null)
+                  setAuditStatus('idle')
+                  try {
+                    const data = await runClaimExplain(payload)
+                    setResult(data)
+                    setStatus('done')
+                  } catch (e) {
+                    setError(e?.message || 'Request failed')
+                    setStatus('error')
+                  }
+                }}
+              >
+                <Brain size={13} />
+                {status === 'loading' ? 'Explaining...' : 'Explain Claim'}
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => {
                 setText('')
                 setResult(null)
                 setError(null)
@@ -193,143 +190,131 @@ export default function ClaimExplanationPanel() {
                 setAudit(null)
                 setAuditError(null)
                 setAuditStatus('idle')
-              }}
-            >
-              Reset
-            </button>
-            {result?.audit_id ? (
-              <button
-                type="button"
-                className={`btn btnGhost ${auditStatus === 'loading' ? 'opacity-70 pointer-events-none' : ''}`}
-                onClick={async () => {
-                  setAuditStatus('loading')
-                  setAuditError(null)
-                  setAudit(null)
-                  try {
-                    const data = await getExplainabilityAudit(result.audit_id)
-                    setAudit(data)
-                    setAuditStatus('done')
-                  } catch (e) {
-                    setAuditError(e?.message || 'Audit request failed')
-                    setAuditStatus('error')
-                  }
-                }}
-              >
-                {auditStatus === 'loading' ? 'Loading audit…' : 'Load Audit JSON'}
-              </button>
-            ) : null}
-          </div>
-          {error && (
-            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-              {String(error)}
+              }}>
+                <RotateCcw size={12} />
+                Reset
+              </Button>
+              {result?.audit_id ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={auditStatus === 'loading'}
+                  onClick={async () => {
+                    setAuditStatus('loading')
+                    setAuditError(null)
+                    setAudit(null)
+                    try {
+                      const data = await getExplainabilityAudit(result.audit_id)
+                      setAudit(data)
+                      setAuditStatus('done')
+                    } catch (e) {
+                      setAuditError(e?.message || 'Audit request failed')
+                      setAuditStatus('error')
+                    }
+                  }}
+                >
+                  <FileSearch size={12} />
+                  {auditStatus === 'loading' ? 'Loading...' : 'Load Audit JSON'}
+                </Button>
+              ) : null}
             </div>
-          )}
-          {auditError && (
-            <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-              {String(auditError)}
-            </div>
-          )}
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-800">Decision</div>
-            <div className="flex flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-semibold ${decisionColor(
-                  result?.decision,
-                )}`}
-              >
-                {result?.decision ? String(result.decision).toUpperCase() : '—'}
-              </span>
-              <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700">
-                Confidence {formatScore(result?.confidence)}
-              </span>
-            </div>
-          </div>
-
-          <div className="mt-3">
-            <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Trace
-            </div>
-            {traceSteps.length ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {traceSteps.slice(0, 8).map((s, i) => (
-                  <span
-                    key={`${s?.stage || 'step'}-${i}`}
-                    className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] text-slate-700"
-                    title={String(s?.timestamp || '')}
-                  >
-                    {String(s?.stage || 'stage')}:{String(s?.status || '—')}
-                  </span>
-                ))}
+            {error && (
+              <div style={{ marginTop: 10, borderRadius: 6, border: '1px solid #FECACA', background: '#FEF2F2', padding: '8px 12px', fontSize: 12, color: '#991B1B' }}>
+                {String(error)}
               </div>
-            ) : (
-              <div className="mt-2 text-xs text-slate-400">No trace steps</div>
+            )}
+            {auditError && (
+              <div style={{ marginTop: 10, borderRadius: 6, border: '1px solid #FECACA', background: '#FEF2F2', padding: '8px 12px', fontSize: 12, color: '#991B1B' }}>
+                {String(auditError)}
+              </div>
             )}
           </div>
-        </div>
-      </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Diagnosis Reasoning
-          </div>
-          <div className="mt-3">
-            <ExplanationList items={grouped.clinical || []} />
-          </div>
-        </div>
+          <div style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-strong)' }}>Decision</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 }}>
+                <span className={decisionBadgeClass(result?.decision)}>
+                  {result?.decision ? String(result.decision).toUpperCase() : '—'}
+                </span>
+                <span style={{ fontSize: 11, background: 'var(--surface-2)', border: '1px solid var(--border)', borderRadius: 20, padding: '3px 10px', color: 'var(--text-muted)' }}>
+                  Conf {formatScore(result?.confidence)}
+                </span>
+              </div>
+            </div>
 
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Code Assignment Logic
-          </div>
-          <div className="mt-3">
-            <ExplanationList items={grouped.coding || []} />
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Rule Validation
-          </div>
-          <div className="mt-3">
-            <ExplanationList items={grouped.rule || []} />
-          </div>
-        </div>
-      </div>
-
-      {otherExplanations.length ? (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-4">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Additional Explanation Types
-          </div>
-          <div className="mt-3 grid gap-3 lg:grid-cols-2">
-            {otherByType.keys.map((k) => (
-              <div key={k} className="rounded-lg border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  {typeTitle(k)}
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 8 }}>
+                Trace
+              </div>
+              {traceSteps.length ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {traceSteps.slice(0, 8).map((s, i) => (
+                    <span
+                      key={`${s?.stage || 'step'}-${i}`}
+                      style={{ fontSize: 11, background: 'var(--primary-light)', border: '1px solid var(--primary-border)', color: 'var(--primary)', borderRadius: 20, padding: '2px 10px' }}
+                      title={String(s?.timestamp || '')}
+                    >
+                      {String(s?.stage || 'stage')}:{String(s?.status || '—')}
+                    </span>
+                  ))}
                 </div>
-                <div className="mt-3">
-                  <ExplanationList items={otherByType.buckets[k]} />
+              ) : (
+                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>No trace steps</div>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Explanation buckets */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14, marginTop: 14 }}>
+          {[
+            { key: 'clinical', title: 'Diagnosis Reasoning', icon: Brain },
+            { key: 'coding', title: 'Code Assignment Logic', icon: FileSearch },
+            { key: 'rule', title: 'Rule Validation', icon: ShieldCheck },
+          ].map(({ key, title, icon: Icon }) => (
+            <div key={key} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface-2)', padding: 14 }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 10 }}>
+                <Icon size={13} style={{ color: 'var(--primary)' }} />
+                <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)' }}>
+                  {title}
                 </div>
               </div>
-            ))}
-          </div>
+              <ExplanationList items={grouped[key] || []} />
+            </div>
+          ))}
         </div>
-      ) : null}
 
-      {audit ? (
-        <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">
-          <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-            Audit JSON
+        {otherExplanations.length ? (
+          <div style={{ marginTop: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 12 }}>
+              Additional Explanation Types
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              {otherByType.keys.map((k) => (
+                <div key={k} style={{ border: '1px solid var(--border)', borderRadius: 'var(--radius-sm)', background: 'var(--surface-2)', padding: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 8 }}>
+                    {typeTitle(k)}
+                  </div>
+                  <ExplanationList items={otherByType.buckets[k]} />
+                </div>
+              ))}
+            </div>
           </div>
-          <pre className="mt-2 max-h-72 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
-            {JSON.stringify(audit, null, 2)}
-          </pre>
-        </div>
-      ) : null}
+        ) : null}
+
+        {audit ? (
+          <div style={{ marginTop: 14, border: '1px solid var(--border)', borderRadius: 'var(--radius)', background: 'var(--surface)', padding: 14 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.5px', color: 'var(--text-muted)', marginBottom: 8 }}>
+              Audit JSON
+            </div>
+            <pre style={{ maxHeight: 288, overflow: 'auto', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--surface-2)', padding: '10px 12px', fontSize: 11, color: 'var(--text-muted)' }}>
+              {JSON.stringify(audit, null, 2)}
+            </pre>
+          </div>
+        ) : null}
+
+      </div>
     </div>
   )
 }
