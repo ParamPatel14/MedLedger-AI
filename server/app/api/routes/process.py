@@ -96,6 +96,9 @@ def _build_claim_data(*, record_id: str, text: str, clinical: dict, coding: dict
 
 
 def _simulate_denial_reason(claim_data: dict) -> str:
+    raw = str((claim_data or {}).get("raw_text") or "")
+    if "CALL_REQUIRED" in raw.upper():
+        return " "
     docs = (claim_data or {}).get("attachments")
     if not isinstance(docs, list) or not docs:
         return "Missing document: please attach discharge summary."
@@ -211,29 +214,25 @@ def _run_oneclick_background(*, run_id: str, payload: OneClickStartIn) -> None:
         _oneclick_set(run_id, denial_event_id=int(ev.id), step="denial_recovery")
         _oneclick_event(run_id, "denial_recovery", "Denial detected; starting recovery workflow")
 
-        if not str(ev.raw_reason_text or "").strip() and bool(payload.auto_call_if_needed):
-            num = str(payload.insurer_number or "").strip()
-            if num:
-                _oneclick_set(run_id, step="call")
-                _oneclick_event(run_id, "call", "Calling insurer to collect denial details")
-                out = vapi_start_outbound_call(
-                    VapiOutboundCallIn(claim_id=str(claim.id), denial_event_id=int(ev.id), insurer_number=num, force=True),
-                    db,
-                )
-                call_id = str((out or {}).get("call_id") or "").strip()
-                if call_id:
-                    _oneclick_set(run_id, call_id=call_id)
-                    _oneclick_event(run_id, "call", "Call started", {"call_id": call_id})
-                    for _ in range(80):
-                        res = vapi_sync_call({"call_id": call_id, "claim_id": str(claim.id), "denial_event_id": int(ev.id)}, db)
-                        if bool((res or {}).get("stored")):
-                            _oneclick_event(run_id, "call", "Call transcript synced; denial details stored")
-                            break
-                        time.sleep(6)
-            else:
-                _oneclick_set(run_id, status="needs_review", step="call")
-                _oneclick_event(run_id, "call", "Insurer phone number missing; cannot auto-call")
-                return
+        if not str(ev.raw_reason_text or "").strip():
+            if bool(payload.auto_call_if_needed):
+                num = str(payload.insurer_number or "").strip()
+                if num:
+                    _oneclick_set(run_id, step="call")
+                    _oneclick_event(run_id, "call", "Calling insurer to collect denial details")
+                    out = vapi_start_outbound_call(
+                        VapiOutboundCallIn(claim_id=str(claim.id), denial_event_id=int(ev.id), insurer_number=num, force=True),
+                        db,
+                    )
+                    call_id = str((out or {}).get("call_id") or "").strip()
+                    if call_id:
+                        _oneclick_set(run_id, call_id=call_id)
+                        _oneclick_event(run_id, "call", "Call started", {"call_id": call_id})
+                else:
+                    _oneclick_event(run_id, "call", "Insurer phone number missing; cannot auto-call")
+            _oneclick_set(run_id, status="needs_review", step="call")
+            _oneclick_event(run_id, "call", "Denial details missing; stopped for human review")
+            return
 
         agent = DenialManagementAgent()
         out = agent.run_for_denial_event(db, claim_id=str(claim.id), denial_event_id=int(ev.id))
@@ -495,7 +494,18 @@ def get_explainability_audit(audit_id: str, db: Session = Depends(get_db)) -> Ex
 @router.post("/process/oneclick/start", response_model=OneClickStartOut)
 def start_oneclick(payload: OneClickStartIn, background: BackgroundTasks) -> OneClickStartOut:
     rid = str(uuid.uuid4())
-    _oneclick_set(rid, status="queued", step="queued", events=[], output={})
+    _oneclick_set(
+        rid,
+        status="queued",
+        step="queued",
+        events=[],
+        output={},
+        input={
+            "text": str(payload.text or ""),
+            "insurer_number": payload.insurer_number,
+            "auto_call_if_needed": bool(payload.auto_call_if_needed),
+        },
+    )
     background.add_task(_run_oneclick_background, run_id=rid, payload=payload)
     return OneClickStartOut(run_id=rid, status="queued", step="queued")
 
@@ -519,4 +529,42 @@ def get_oneclick(run_id: str) -> OneClickStatusOut:
         decision=snap.get("decision"),
         output=snap.get("output") if isinstance(snap.get("output"), dict) else {},
         events=list(snap.get("events") or []),
+    )
+
+
+@router.post("/process/oneclick/{run_id}/override", response_model=OneClickStatusOut)
+def override_oneclick(run_id: str, background: BackgroundTasks) -> OneClickStatusOut:
+    rid = str(run_id or "").strip()
+    if not rid:
+        raise HTTPException(status_code=400, detail="Missing run_id")
+    snap = _oneclick_snapshot(rid)
+    if not snap:
+        raise HTTPException(status_code=404, detail="Run not found")
+    if str(snap.get("status") or "") != "needs_review":
+        raise HTTPException(status_code=400, detail="Only reviewable runs can be overridden")
+    inp = snap.get("input") if isinstance(snap.get("input"), dict) else {}
+    text = str(inp.get("text") or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Original text not available for override")
+    payload = OneClickStartIn(
+        text=text,
+        insurer_number=inp.get("insurer_number"),
+        auto_call_if_needed=bool(inp.get("auto_call_if_needed", True)),
+        override_guardrails=True,
+    )
+    _oneclick_event(rid, "override", "User overridden review requirement; continuing workflow")
+    _oneclick_set(rid, status="queued", step="queued")
+    background.add_task(_run_oneclick_background, run_id=rid, payload=payload)
+    snap2 = _oneclick_snapshot(rid)
+    return OneClickStatusOut(
+        run_id=rid,
+        status=str(snap2.get("status") or "unknown"),
+        step=str(snap2.get("step") or "unknown"),
+        record_id=snap2.get("record_id"),
+        claim_id=snap2.get("claim_id"),
+        denial_event_id=snap2.get("denial_event_id"),
+        call_id=snap2.get("call_id"),
+        decision=snap2.get("decision"),
+        output=snap2.get("output") if isinstance(snap2.get("output"), dict) else {},
+        events=list(snap2.get("events") or []),
     )

@@ -169,10 +169,8 @@ def test_oneclick_workflow_override_guardrails_continues(client, monkeypatch):
     out = _poll(client, rid, max_wait_s=2.0)
     assert out.get("status") == "needs_review"
 
-    res2 = client.post("/process/oneclick/start", json={"text": "test claim", "auto_call_if_needed": False, "override_guardrails": True})
+    res2 = client.post(f"/process/oneclick/{rid}/override")
     assert res2.status_code == 200
-    rid2 = res2.json().get("run_id")
-    assert isinstance(rid2, str) and rid2
-    out2 = _poll(client, rid2, max_wait_s=2.0)
+    out2 = _poll(client, rid, max_wait_s=2.0)
     assert out2.get("status") == "done"
     assert out2.get("step") == "approved"

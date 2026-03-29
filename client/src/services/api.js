@@ -88,6 +88,17 @@ export async function getOneClickWorkflow(runId) {
   return res.json()
 }
 
+export async function overrideOneClickWorkflow(runId) {
+  const res = await fetch(`/api/process/oneclick/${encodeURIComponent(runId)}/override`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(`One-click override failed (${res.status})${txt ? `: ${txt}` : ''}`)
+  }
+  return res.json()
+}
+
 async function uploadFile(path, file) {
   const form = new FormData()
   form.append('file', file)

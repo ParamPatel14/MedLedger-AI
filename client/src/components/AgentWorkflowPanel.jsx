@@ -344,8 +344,9 @@ export default function AgentWorkflowPanel({
             </span>
           </div>
 
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            {[
+          <div className="mt-3 overflow-x-auto pb-2">
+            <div className="flex min-w-max flex-nowrap items-center gap-2">
+              {[
               { key: 'clinical', label: 'Clinical' },
               { key: 'svm_after_clinical', label: 'SVM' },
               { key: 'coding', label: 'Coding' },
@@ -397,7 +398,8 @@ export default function AgentWorkflowPanel({
                   )}
                 </div>
               )
-            })}
+              })}
+            </div>
           </div>
 
           <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3">

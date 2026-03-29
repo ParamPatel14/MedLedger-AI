@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import AgentWorkflowPanel from './AgentWorkflowPanel'
 import {
   getOneClickWorkflow,
+  overrideOneClickWorkflow,
   runPipelineText,
   startOneClickWorkflow,
   uploadClinicalDocument,
@@ -31,15 +32,44 @@ export default function ClinicalExtractorPanel() {
   const oneClickGov = oneClickOutput?.governance || null
   const overrideUsed = Boolean(oneClickOutput?.override_guardrails)
 
+  const svmOverall = useMemo(() => {
+    const v1 = String(oneClickOutput?.svm_status || '').trim()
+    if (v1) return v1.toLowerCase()
+    const v2 = String(oneClickSvm?.summary?.overall || '').trim()
+    if (v2) return v2.toLowerCase()
+    return ''
+  }, [oneClickOutput, oneClickSvm])
+
+  const normalizedSvm = useMemo(() => {
+    if (!oneClickSvm || typeof oneClickSvm !== 'object') {
+      if (!svmOverall) return null
+      return {
+        svm_after_clinical: { status: svmOverall, scores: {}, decision: { status: svmOverall }, issues: [] },
+        svm_after_coding: { status: svmOverall, scores: {}, decision: { status: svmOverall }, issues: [] },
+        svm_after_rules: { status: svmOverall, scores: {}, decision: { status: svmOverall }, issues: [] },
+      }
+    }
+    const keys = Object.keys(oneClickSvm || {})
+    const hasStages = keys.some((k) => String(k).startsWith('svm_after_'))
+    if (hasStages) return oneClickSvm
+    if (!svmOverall) return oneClickSvm
+    return {
+      svm_after_clinical: { status: svmOverall, scores: {}, decision: { status: svmOverall }, issues: [] },
+      svm_after_coding: { status: svmOverall, scores: {}, decision: { status: svmOverall }, issues: [] },
+      svm_after_rules: { status: svmOverall, scores: {}, decision: { status: svmOverall }, issues: [] },
+      summary: { overall: svmOverall },
+    }
+  }, [oneClickSvm, svmOverall])
+
   const oneClickTrace = useMemo(() => {
     if (!oneClickData || !oneClickOutput) return null
     const flow = [
       { agent: 'clinical', status: oneClickClinical ? 'ok' : 'skipped' },
-      { agent: 'svm_after_clinical', status: oneClickSvm?.svm_after_clinical ? 'ok' : 'skipped' },
+      { agent: 'svm_after_clinical', status: normalizedSvm?.svm_after_clinical || svmOverall ? 'ok' : 'skipped' },
       { agent: 'coding', status: oneClickCoding ? 'ok' : 'skipped' },
-      { agent: 'svm_after_coding', status: oneClickSvm?.svm_after_coding ? 'ok' : 'skipped' },
+      { agent: 'svm_after_coding', status: normalizedSvm?.svm_after_coding || svmOverall ? 'ok' : 'skipped' },
       { agent: 'rule', status: oneClickPayer ? 'ok' : 'skipped' },
-      { agent: 'svm_after_rules', status: oneClickSvm?.svm_after_rules ? 'ok' : 'skipped' },
+      { agent: 'svm_after_rules', status: normalizedSvm?.svm_after_rules || svmOverall ? 'ok' : 'skipped' },
       { agent: 'governance', status: oneClickGov ? 'ok' : 'skipped' },
     ]
     return {
@@ -48,12 +78,22 @@ export default function ClinicalExtractorPanel() {
       clinical: oneClickClinical || null,
       coding: oneClickCoding || null,
       payer: oneClickPayer || null,
-      svm: oneClickSvm || null,
+      svm: normalizedSvm || oneClickSvm || null,
       governance: oneClickGov || null,
       confidence: oneClickGov?.confidence ?? oneClickOutput?.confidence ?? 0,
       status: String(oneClickData?.status || 'idle'),
     }
-  }, [oneClickData, oneClickOutput, oneClickClinical, oneClickCoding, oneClickPayer, oneClickSvm, oneClickGov])
+  }, [
+    oneClickData,
+    oneClickOutput,
+    oneClickClinical,
+    oneClickCoding,
+    oneClickPayer,
+    oneClickSvm,
+    oneClickGov,
+    normalizedSvm,
+    svmOverall,
+  ])
 
   const pollOneClick = async (runId) => {
     if (!runId) return
@@ -90,6 +130,27 @@ export default function ClinicalExtractorPanel() {
     } catch (e) {
       setOneClickState('idle')
       setOneClickError(e?.message || 'Failed to start workflow')
+    }
+  }
+
+  const overrideOneClick = async (runId) => {
+    const rid = String(runId || '').trim()
+    if (!rid) return
+    setOneClickError('')
+    setOneClickState('starting')
+    try {
+      const data = await overrideOneClickWorkflow(rid)
+      setOneClickData(data)
+      setOneClickState('polling')
+      await pollOneClick(rid)
+    } catch (e) {
+      const msg = String(e?.message || '')
+      if (msg.includes('(404)') && clinicalText.trim()) {
+        await startOneClick(clinicalText, { overrideGuardrails: true })
+        return
+      }
+      setOneClickState('idle')
+      setOneClickError(e?.message || 'Failed to override guardrails')
     }
   }
 
@@ -188,7 +249,7 @@ export default function ClinicalExtractorPanel() {
           </button>
         </div>
 
-        <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Insurer Phone Number (optional)</div>
             <input
@@ -252,8 +313,8 @@ export default function ClinicalExtractorPanel() {
                     <button
                       type="button"
                       className="btn btnPrimary text-white"
-                      onClick={() => startOneClick(clinicalText, { overrideGuardrails: true })}
-                      disabled={!clinicalText.trim() || oneClickState === 'starting' || oneClickState === 'polling'}
+                      onClick={() => overrideOneClick(oneClickRunId)}
+                      disabled={!oneClickRunId || oneClickState === 'starting' || oneClickState === 'polling'}
                     >
                       Continue (Override Guardrails)
                     </button>
@@ -278,21 +339,6 @@ export default function ClinicalExtractorPanel() {
                     {JSON.stringify(oneClickData, null, 2)}
                   </pre>
                 </details>
-
-                {oneClickTrace ? (
-                  <details className="mt-3" open={String(oneClickData?.status || '') === 'needs_review'}>
-                    <summary className="cursor-pointer text-xs font-semibold text-slate-600">
-                      Full Agent Flow + Verification + Guardrails
-                    </summary>
-                    <AgentWorkflowPanel
-                      view="full"
-                      externalResult={oneClickTrace}
-                      externalText={clinicalText}
-                      hideControls={true}
-                      title="Agent Flow Visualization"
-                    />
-                  </details>
-                ) : null}
               </div>
             ) : (
               <div className="mt-2 text-xs text-slate-500">
@@ -301,6 +347,31 @@ export default function ClinicalExtractorPanel() {
             )}
           </div>
         </div>
+
+        {oneClickTrace ? (
+          <div className="mt-3">
+            <details
+              className="rounded-lg border border-slate-200 bg-white p-3"
+              open={
+                oneClickState === 'polling' ||
+                String(oneClickData?.status || '') === 'needs_review'
+              }
+            >
+              <summary className="cursor-pointer text-xs font-semibold text-slate-600">
+                Full Agent Flow + Verification + Guardrails
+              </summary>
+              <div className="mt-3">
+                <AgentWorkflowPanel
+                  view="full"
+                  externalResult={oneClickTrace}
+                  externalText={clinicalText}
+                  hideControls={true}
+                  title="Agent Flow Visualization"
+                />
+              </div>
+            </details>
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap gap-2 mb-3">

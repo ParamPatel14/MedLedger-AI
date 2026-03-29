@@ -109,6 +109,9 @@ export default function DenialRecoveryPanel() {
 
   const metrics = data?.metrics || {}
   const rows = Array.isArray(data?.denied_claims) ? data.denied_claims : []
+  const needsCallRows = rows.filter((r) => r?.needs_call)
+  const solvedRows = rows.filter((r) => String(r?.status || '').toLowerCase() === 'approved')
+  const otherRows = rows.filter((r) => !r?.needs_call && String(r?.status || '').toLowerCase() !== 'approved')
 
   const startCall = async () => {
     if (!selectedClaimId) {
@@ -272,24 +275,41 @@ export default function DenialRecoveryPanel() {
         </div>
       </div>
 
-      <div className="mt-5 overflow-hidden rounded-lg border border-slate-200">
-        <div className="grid grid-cols-12 gap-2 border-b border-slate-200 bg-slate-50 px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
-          <div className="col-span-3">Claim</div>
-          <div className="col-span-2">Status</div>
-          <div className="col-span-2">Progress</div>
-          <div className="col-span-2 text-right">Amount</div>
-          <div className="col-span-3">Timeline</div>
-        </div>
+      <div className="mt-5 space-y-3">
+        {[
+          { key: 'needs_call', title: 'Needs Call', subtitle: 'Denials missing details (call insurer)', items: needsCallRows },
+          { key: 'active', title: 'In Progress', subtitle: 'Denied / resubmitting', items: otherRows },
+          { key: 'solved', title: 'Solved', subtitle: 'Recovered (approved)', items: solvedRows },
+        ].map((section) => {
+          const list = Array.isArray(section.items) ? section.items : []
+          return (
+            <div key={section.key} className="overflow-hidden rounded-lg border border-slate-200">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+                <div>
+                  <div className="text-sm font-semibold text-slate-800">
+                    {section.title} <span className="text-slate-500">({list.length})</span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">{section.subtitle}</div>
+                </div>
+              </div>
 
-        {state === 'loading' && (
-          <div className="px-4 py-4 text-xs text-slate-500">Loading denial dashboard…</div>
-        )}
+              <div className="grid grid-cols-12 gap-2 border-b border-slate-200 bg-white px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <div className="col-span-3">Claim</div>
+                <div className="col-span-2">Status</div>
+                <div className="col-span-2">Progress</div>
+                <div className="col-span-2 text-right">Amount</div>
+                <div className="col-span-3">Timeline</div>
+              </div>
 
-        {state !== 'loading' && rows.length === 0 && (
-          <div className="px-4 py-4 text-xs text-slate-500">No denied claims found.</div>
-        )}
+              {state === 'loading' && (
+                <div className="px-4 py-4 text-xs text-slate-500">Loading denial dashboard…</div>
+              )}
 
-        {rows.map((r) => {
+              {state !== 'loading' && list.length === 0 && (
+                <div className="px-4 py-4 text-xs text-slate-500">No claims in this section.</div>
+              )}
+
+              {list.map((r) => {
           const claimId = String(r?.claim_id || '')
           const isOpen = Boolean(expanded[claimId])
           const denialTypes = Array.isArray(r?.denial_types) ? r.denial_types : []
@@ -368,6 +388,9 @@ export default function DenialRecoveryPanel() {
                   </div>
                 </div>
               )}
+            </div>
+          )
+              })}
             </div>
           )
         })}
