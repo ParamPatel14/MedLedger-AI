@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { getDenialDashboard, startVapiOutboundCall, syncVapiCall } from '../services/api'
+import { getDenialDashboard, runDenialAgent, startVapiOutboundCall, syncVapiCall } from '../services/api'
 
 function pillClass(status) {
   const s = String(status || '').toLowerCase()
@@ -72,6 +72,9 @@ export default function DenialRecoveryPanel() {
   const [syncState, setSyncState] = useState('idle')
   const [syncError, setSyncError] = useState('')
   const [syncInfo, setSyncInfo] = useState(null)
+  const [resubmitState, setResubmitState] = useState('idle')
+  const [resubmitError, setResubmitError] = useState('')
+  const [resubmitInfo, setResubmitInfo] = useState(null)
 
   useEffect(() => {
     let active = true
@@ -112,6 +115,8 @@ export default function DenialRecoveryPanel() {
   const needsCallRows = rows.filter((r) => r?.needs_call)
   const solvedRows = rows.filter((r) => String(r?.status || '').toLowerCase() === 'approved')
   const otherRows = rows.filter((r) => !r?.needs_call && String(r?.status || '').toLowerCase() !== 'approved')
+  const selectedRow = rows.find((r) => String(r?.claim_id || '') === String(selectedClaimId || '')) || null
+  const selectedCall = selectedRow?.call || null
 
   const startCall = async () => {
     if (!selectedClaimId) {
@@ -127,6 +132,8 @@ export default function DenialRecoveryPanel() {
     setCallInfo(null)
     setSyncError('')
     setSyncInfo(null)
+    setResubmitError('')
+    setResubmitInfo(null)
     setCallState('starting')
     try {
       const out = await startVapiOutboundCall({
@@ -161,6 +168,59 @@ export default function DenialRecoveryPanel() {
       setSyncError(e?.message || 'Sync failed')
     }
   }
+
+  const resubmit = async () => {
+    if (!selectedClaimId || !selectedDenialEventId) {
+      setResubmitError('Select a claim and denial event first (click a claim row).')
+      return
+    }
+    setResubmitError('')
+    setResubmitInfo(null)
+    setResubmitState('running')
+    try {
+      const out = await runDenialAgent({ claimId: selectedClaimId, denialEventId: selectedDenialEventId })
+      setResubmitInfo(out)
+      setResubmitState('idle')
+      await refresh()
+    } catch (e) {
+      setResubmitState('idle')
+      setResubmitError(e?.message || 'Resubmit failed')
+    }
+  }
+
+  useEffect(() => {
+    const callId = String(callInfo?.call_id || callInfo?.callId || '').trim()
+    if (!callId) return
+    if (!selectedClaimId) return
+    let active = true
+    let attempts = 0
+    const iv = setInterval(async () => {
+      if (!active) return
+      if (syncState !== 'idle') return
+      attempts += 1
+      if (attempts > 40) {
+        clearInterval(iv)
+        return
+      }
+      try {
+        const out = await syncVapiCall({ callId, claimId: selectedClaimId, denialEventId: selectedDenialEventId })
+        if (!active) return
+        if (out && typeof out === 'object' && out.stored) {
+          setSyncInfo(out)
+          await refresh()
+          clearInterval(iv)
+        }
+      } catch {
+        if (attempts > 8) {
+          clearInterval(iv)
+        }
+      }
+    }, 8000)
+    return () => {
+      active = false
+      clearInterval(iv)
+    }
+  }, [callInfo, selectedClaimId, selectedDenialEventId, syncState])
 
   return (
     <div className="mt-6 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -223,8 +283,15 @@ export default function DenialRecoveryPanel() {
             <button className="btn btnSecondary" onClick={startCall} disabled={callState !== 'idle'}>
               {callState === 'starting' ? 'Starting…' : 'Call Insurer'}
             </button>
-            <button className="btn btnSecondary" onClick={syncCall} disabled={syncState !== 'idle' || !callInfo?.call_id}>
+            <button className="btn btnSecondary" onClick={syncCall} disabled={syncState !== 'idle' || !(callInfo?.call_id || callInfo?.callId)}>
               {syncState === 'syncing' ? 'Syncing…' : 'Sync Result'}
+            </button>
+            <button
+              className="btn btnPrimary text-white"
+              onClick={resubmit}
+              disabled={resubmitState !== 'idle' || !selectedClaimId || !selectedDenialEventId || Boolean(selectedRow?.needs_call)}
+            >
+              {resubmitState === 'running' ? 'Resubmitting…' : 'Resubmit'}
             </button>
           </div>
         </div>
@@ -252,6 +319,7 @@ export default function DenialRecoveryPanel() {
             </div>
             {callError && <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-600">{callError}</div>}
             {syncError && <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-600">{syncError}</div>}
+            {resubmitError && <div className="mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-600">{resubmitError}</div>}
           </div>
 
           <div className="rounded-lg border border-slate-200 bg-white p-3">
@@ -271,8 +339,38 @@ export default function DenialRecoveryPanel() {
                 </pre>
               </div>
             )}
+            {resubmitInfo && (
+              <div className="mt-3">
+                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Resubmit Result</div>
+                <pre className="mt-2 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
+                  {JSON.stringify(resubmitInfo, null, 2)}
+                </pre>
+              </div>
+            )}
           </div>
         </div>
+
+        {selectedClaimId ? (
+          <div className="mt-3 grid gap-3 md:grid-cols-2">
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Call Summary</div>
+              <div className="mt-2 text-xs text-slate-700">
+                {selectedCall?.summary ? String(selectedCall.summary) : <span className="text-slate-500">No call summary yet.</span>}
+              </div>
+              {selectedCall?.status ? <div className="mt-2 text-[11px] text-slate-500">Call status: {String(selectedCall.status)}</div> : null}
+            </div>
+            <div className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Transcript</div>
+              {selectedCall?.transcript ? (
+                <pre className="mt-2 max-h-56 overflow-auto rounded-lg border border-slate-200 bg-slate-50 p-3 text-[11px] text-slate-700">
+                  {String(selectedCall.transcript)}
+                </pre>
+              ) : (
+                <div className="mt-2 text-xs text-slate-500">No transcript yet.</div>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="mt-5 space-y-3">
@@ -280,7 +378,9 @@ export default function DenialRecoveryPanel() {
           { key: 'needs_call', title: 'Needs Call', subtitle: 'Denials missing details (call insurer)', items: needsCallRows },
           { key: 'active', title: 'In Progress', subtitle: 'Denied / resubmitting', items: otherRows },
           { key: 'solved', title: 'Solved', subtitle: 'Recovered (approved)', items: solvedRows },
-        ].map((section) => {
+        ]
+          .filter((s) => (s.key === 'solved' ? (Array.isArray(s.items) ? s.items.length > 0 : false) : true))
+          .map((section) => {
           const list = Array.isArray(section.items) ? section.items : []
           return (
             <div key={section.key} className="overflow-hidden rounded-lg border border-slate-200">

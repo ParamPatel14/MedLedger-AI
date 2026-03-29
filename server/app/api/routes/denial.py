@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import re
+import uuid
 import requests
 import urllib.error
 import urllib.request
@@ -210,7 +211,7 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
         return _mock_denial_dashboard(seed_count=10)
 
     try:
-        _seed_demo_denial_dashboard(db, seed_count=10)
+        _seed_seeded_denial_dashboard(db, seed_count=10)
         claims = db.query(Claim).order_by(Claim.updated_at.desc()).limit(200).all()
     except Exception:
         return _mock_denial_dashboard(seed_count=10)
@@ -223,6 +224,9 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
 
     rows: List[Dict[str, Any]] = []
     for claim in claims:
+        cd = claim.claim_data if isinstance(getattr(claim, "claim_data", None), dict) else {}
+        if bool(cd.get("demo_seed")) or str(getattr(claim, "id", "") or "").startswith("demo-claim-"):
+            continue
         denials = db.query(DenialEvent).filter(DenialEvent.claim_id == claim.id).order_by(DenialEvent.created_at.asc()).all()
         corrections = (
             db.query(CorrectionApplied).filter(CorrectionApplied.claim_id == claim.id).order_by(CorrectionApplied.created_at.asc()).all()
@@ -254,6 +258,28 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
                 denial_types = [str(x.get("type") or "").strip() for x in (last_denial.structured_reasons or []) if isinstance(x, dict)]
                 denial_types = [t for t in denial_types if t]
             has_details = _has_denial_details(last_denial)
+            call: Optional[Dict[str, Any]] = None
+            agent_run: Optional[Dict[str, Any]] = None
+            agent_error: Optional[str] = None
+            if last_denial is not None and isinstance(getattr(last_denial, "source_meta", None), dict):
+                meta = last_denial.source_meta or {}
+                vapi = meta.get("vapi") if isinstance(meta.get("vapi"), dict) else {}
+                last_report = vapi.get("last_report") if isinstance(vapi.get("last_report"), dict) else {}
+                summary = _vapi_report_summary(last_report)
+                transcript = _vapi_report_transcript(last_report)
+                structured_out = vapi.get("structured_output") if isinstance(vapi.get("structured_output"), dict) else None
+                call_id = str(vapi.get("call_id") or "").strip() or None
+                call_status = _vapi_report_call_status(last_report)
+                call = {
+                    "call_id": call_id,
+                    "status": call_status,
+                    "summary": summary,
+                    "transcript": transcript,
+                    "structured_output": structured_out,
+                    "updated_at": str(vapi.get("updated_at") or "").strip() or None,
+                }
+                agent_run = vapi.get("agent_run") if isinstance(vapi.get("agent_run"), dict) else None
+                agent_error = str(vapi.get("agent_error") or "").strip() or None
             rows.append(
                 {
                     "claim_id": claim.id,
@@ -272,6 +298,9 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
                     "timeline": timeline,
                     "updated_at": _safe_iso(getattr(claim, "updated_at", None)),
                     "needs_call": bool(denials_count > 0 and not has_details),
+                    "call": call,
+                    "agent_run": agent_run,
+                    "agent_error": agent_error,
                 }
             )
 
@@ -306,7 +335,7 @@ def _mock_denial_dashboard(seed_count: int = 10) -> Dict[str, Any]:
 
     for i in range(seed_count):
         idx = i + 1
-        claim_id = f"demo-claim-{idx:03d}"
+        claim_id = str(uuid.uuid4())
         amount = float(5000.0)
 
         status = "denied"
@@ -337,6 +366,9 @@ def _mock_denial_dashboard(seed_count: int = 10) -> Dict[str, Any]:
                 "timeline": timeline,
                 "updated_at": now,
                 "needs_call": needs_call,
+                "call": None,
+                "agent_run": None,
+                "agent_error": None,
             }
         )
 
@@ -360,29 +392,33 @@ def _mock_denial_dashboard(seed_count: int = 10) -> Dict[str, Any]:
 
 
 def _seed_demo_denial_dashboard(db: Session, seed_count: int = 10) -> None:
+    return
+
+
+def _seed_seeded_denial_dashboard(db: Session, seed_count: int = 10) -> None:
     seed_count = max(1, int(seed_count or 10))
     existing = db.query(Claim).order_by(Claim.created_at.desc()).limit(500).all()
-    demo_existing = 0
+    seeded_ids: set[str] = set()
+    seeded_count = 0
     for c in existing:
         cd = c.claim_data if isinstance(getattr(c, "claim_data", None), dict) else {}
-        if bool(cd.get("demo_seed")):
-            demo_existing += 1
-    if demo_existing >= seed_count:
+        if bool(cd.get("seeded_dashboard")):
+            seeded_ids.add(str(getattr(c, "id", "") or ""))
+            seeded_count += 1
+    if seeded_count >= seed_count:
         return
 
-    for i in range(demo_existing, seed_count):
-        idx = i + 1
+    needed = seed_count - seeded_count
+    start = seeded_count + 1
+    for i in range(needed):
+        idx = start + i
         amount = float(5000.0)
-        claim_status = "denied"
-        denial_raw = ""
         denial_type = "missing_document" if idx % 3 == 0 else ("coding_mismatch" if idx % 3 == 1 else "missing_info")
-        denial_types = [{"type": denial_type}]
-
         claim = Claim(
-            status=claim_status,
+            status="denied",
             record_id=None,
             claim_data={
-                "demo_seed": True,
+                "seeded_dashboard": True,
                 "billing": {"amount": amount, "currency": "INR"},
                 "available_documents": ["discharge_summary", "operative_notes", "lab_reports"],
                 "attachments": [],
@@ -394,10 +430,10 @@ def _seed_demo_denial_dashboard(db: Session, seed_count: int = 10) -> None:
         ev = DenialEvent(
             claim_id=claim.id,
             status="denied",
-            raw_reason_text=denial_raw,
+            raw_reason_text="",
             rejection_codes=[],
-            structured_reasons=denial_types,
-            source_meta={"source": "demo_seed"},
+            structured_reasons=[{"type": denial_type}],
+            source_meta={"source": "seeded_dashboard"},
         )
         db.add(ev)
 
@@ -479,6 +515,47 @@ def _has_denial_details(ev: Optional[DenialEvent]) -> bool:
             except Exception:
                 pass
     return False
+
+
+def _vapi_report_summary(report: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(report, dict) or not report:
+        return None
+    if isinstance(report.get("summary"), str) and str(report.get("summary") or "").strip():
+        return str(report.get("summary") or "").strip()
+    analysis = report.get("analysis") if isinstance(report.get("analysis"), dict) else {}
+    if isinstance(analysis.get("summary"), str) and str(analysis.get("summary") or "").strip():
+        return str(analysis.get("summary") or "").strip()
+    message = report.get("message") if isinstance(report.get("message"), dict) else {}
+    if isinstance(message.get("summary"), str) and str(message.get("summary") or "").strip():
+        return str(message.get("summary") or "").strip()
+    return None
+
+
+def _vapi_report_transcript(report: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(report, dict) or not report:
+        return None
+    if isinstance(report.get("transcript"), str) and str(report.get("transcript") or "").strip():
+        return str(report.get("transcript") or "").strip()
+    message = report.get("message") if isinstance(report.get("message"), dict) else {}
+    if isinstance(message.get("transcript"), str) and str(message.get("transcript") or "").strip():
+        return str(message.get("transcript") or "").strip()
+    return None
+
+
+def _vapi_report_call_status(report: Dict[str, Any]) -> Optional[str]:
+    if not isinstance(report, dict) or not report:
+        return None
+    status = str(report.get("status") or "").strip()
+    if status:
+        return status
+    call = report.get("call") if isinstance(report.get("call"), dict) else {}
+    status2 = str(call.get("status") or "").strip()
+    if status2:
+        return status2
+    message = report.get("message") if isinstance(report.get("message"), dict) else {}
+    call2 = message.get("call") if isinstance(message.get("call"), dict) else {}
+    status3 = str(call2.get("status") or "").strip()
+    return status3 or None
 
 
 def _denial_summary(claim: Claim, ev: Optional[DenialEvent]) -> Dict[str, Any]:

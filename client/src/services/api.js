@@ -176,6 +176,20 @@ export async function syncVapiCall({ callId, claimId = '', denialEventId = null 
   return res.json()
 }
 
+export async function runDenialAgent({ claimId, denialEventId }) {
+  const cid = String(claimId || '').trim()
+  const did = String(denialEventId ?? '').trim()
+  if (!cid || !did) throw new Error('Missing claimId or denialEventId')
+  const res = await fetch(`/api/claims/${encodeURIComponent(cid)}/denials/${encodeURIComponent(did)}/run`, {
+    method: 'POST',
+  })
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(`Resubmit failed (${res.status})${txt ? `: ${txt}` : ''}`)
+  }
+  return res.json()
+}
+
 export async function listRules({ tpa = '', category = '', ruleType = '', active = true, limit = 50, offset = 0 } = {}) {
   const params = new URLSearchParams()
   if (tpa) params.set('tpa', tpa)
