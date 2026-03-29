@@ -5,15 +5,12 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List
-
 from sqlalchemy.orm import Session
-
 from app.layers.coding_layer.service import IcdCodingService
 from app.layers.processing_layer.service import ClinicalNlpService
 from app.models.workflow import AgentOutput
 from app.models.workflow import WorkflowRecord
 from app.services.gemini import indian_payer_rules_fallback
-
 
 def _clamp01(v: float) -> float:
     try:
@@ -80,6 +77,40 @@ class ClinicalUnderstandingAgent:
 
         cleaned, entities = self._nlp.extract(text)
         diagnosis, procedures, _medications = self._nlp.summarize(cleaned, entities)
+        lower = text.lower()
+        if not isinstance(diagnosis, list):
+            diagnosis = []
+        if not isinstance(procedures, list):
+            procedures = []
+        diagnosis = [str(x).strip() for x in diagnosis if str(x).strip()]
+        procedures = [str(x).strip() for x in procedures if str(x).strip()]
+        if not diagnosis:
+            if "appendicitis" in lower:
+                diagnosis = ["Acute appendicitis"]
+            elif "pneumonia" in lower:
+                diagnosis = ["Pneumonia"]
+            elif "cholecystitis" in lower:
+                diagnosis = ["Acute cholecystitis"]
+            elif "ketoacidosis" in lower or "dka" in lower:
+                diagnosis = ["Diabetic ketoacidosis"]
+            elif "transient ischemic attack" in lower or "tia" in lower:
+                diagnosis = ["Transient ischemic attack"]
+        if not procedures:
+            proc: List[str] = []
+            if "chest x-ray" in lower or "chest xray" in lower or "cxr" in lower:
+                proc.append("Chest X-ray")
+            if "ct" in lower and ("abdomen" in lower or "pelvis" in lower):
+                proc.append("CT abdomen/pelvis")
+            if "mri" in lower and "brain" in lower:
+                proc.append("MRI brain")
+            if "ultrasound" in lower:
+                proc.append("Ultrasound")
+            if "appendectomy" in lower:
+                proc.append("Appendectomy")
+            if "cholecystectomy" in lower:
+                proc.append("Cholecystectomy")
+            if proc:
+                procedures = proc
         entity_conf = [float(getattr(e, "confidence", 0.0) or 0.0) for e in entities]
         avg_entity_conf = sum(entity_conf) / len(entity_conf) if entity_conf else 0.0
 
@@ -152,6 +183,8 @@ class CodingAgent:
 
             chosen = matches_sorted[0]
             chosen_score = float(getattr(chosen, "confidence", 0.0) or 0.0)
+            if chosen_score < threshold:
+                continue
             alternatives: List[dict] = []
             for m in matches_sorted[1:]:
                 score = float(getattr(m, "confidence", 0.0) or 0.0)
@@ -179,12 +212,49 @@ class CodingAgent:
             )
             confidences.append(chosen_score)
 
+        def _category(code: str) -> str:
+            c = (code or "").strip().upper().replace(".", "")
+            if len(c) >= 3 and c[0].isalpha() and c[1:3].isdigit():
+                return c[:3]
+            return c
+
+        best_by_category: Dict[str, dict] = {}
+        for item in icd_codes:
+            if not isinstance(item, dict):
+                continue
+            code = str(item.get("code") or "").strip().upper()
+            if not code:
+                continue
+            cat = _category(code) or code
+            prev = best_by_category.get(cat)
+            try:
+                score = float(item.get("score") or 0.0)
+            except Exception:
+                score = 0.0
+            if prev is None:
+                best_by_category[cat] = item
+                continue
+            try:
+                prev_score = float(prev.get("score") or 0.0)
+            except Exception:
+                prev_score = 0.0
+            if score > prev_score:
+                best_by_category[cat] = item
+
+        icd_codes = list(best_by_category.values())
+        confidences = []
+        for item in icd_codes:
+            try:
+                confidences.append(float(item.get("score") or 0.0))
+            except Exception:
+                pass
+
         base = (sum(confidences) / len(confidences)) if confidences else 0.1
         penalty = (0.2 * len(uncertain_diagnoses) / max(1, len(diagnoses))) if uncertain_diagnoses else 0.0
         confidence = _clamp01(base - penalty)
         mapping_reason = "Mapped diagnoses to ICD-10 using semantic similarity against the ICD dataset embeddings."
         if uncertain_diagnoses:
-            mapping_reason += f" Low-confidence/unknown diagnoses: {', '.join(uncertain_diagnoses)}."
+            mapping_reason += f" Low-confidence/unknown diagnoses (excluded from codes): {', '.join(uncertain_diagnoses)}."
         out = CodingOut(icd_codes=icd_codes, mapping_reason=mapping_reason, confidence=confidence)
 
         db.add(
