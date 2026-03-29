@@ -210,16 +210,10 @@ def denial_dashboard(db: Session = Depends(get_db)) -> Dict[str, Any]:
         return _mock_denial_dashboard(seed_count=10)
 
     try:
-        has_any_denial = bool(db.query(DenialEvent).limit(1).all())
+        _seed_demo_denial_dashboard(db, seed_count=10)
+        claims = db.query(Claim).order_by(Claim.updated_at.desc()).limit(200).all()
     except Exception:
-        has_any_denial = False
-
-    if not has_any_denial:
-        try:
-            _seed_demo_denial_dashboard(db, seed_count=10)
-            claims = db.query(Claim).order_by(Claim.updated_at.desc()).limit(200).all()
-        except Exception:
-            return _mock_denial_dashboard(seed_count=10)
+        return _mock_denial_dashboard(seed_count=10)
 
     total_claims = len(claims)
     denied_claims_count = 0
@@ -313,39 +307,16 @@ def _mock_denial_dashboard(seed_count: int = 10) -> Dict[str, Any]:
     for i in range(seed_count):
         idx = i + 1
         claim_id = f"demo-claim-{idx:03d}"
-        amount = float(12000 + (idx * 750))
+        amount = float(5000.0)
 
-        if idx <= 4:
-            status = "denied"
-            denials_count = 1
-            corrections_count = 0
-            resubmissions_count = 0
-            needs_call = True
-            denial_types = ["missing_info"]
-            progress = {"stage": "denied", "percent": 25}
-            timeline = [{"step": "submitted"}, {"step": "denied"}]
-        elif idx <= 7:
-            status = "resubmitted"
-            denials_count = 1
-            corrections_count = 1
-            resubmissions_count = 1
-            needs_call = False
-            denial_types = ["coding_mismatch"]
-            progress = {"stage": "resubmitted", "percent": 75}
-            timeline = [{"step": "submitted"}, {"step": "denied"}, {"step": "fixed"}, {"step": "resubmitted"}]
-            automated_claims += 1
-        else:
-            status = "approved"
-            denials_count = 1
-            corrections_count = 1
-            resubmissions_count = 1
-            needs_call = False
-            denial_types = ["missing_document"]
-            progress = {"stage": "approved", "percent": 100}
-            timeline = [{"step": "submitted"}, {"step": "denied"}, {"step": "fixed"}, {"step": "resubmitted"}, {"step": "approved"}]
-            recovered_claims += 1
-            revenue_recovered += amount
-            automated_claims += 1
+        status = "denied"
+        denials_count = 1
+        corrections_count = 0
+        resubmissions_count = 0
+        needs_call = True
+        denial_types = ["missing_document" if idx % 3 == 0 else ("coding_mismatch" if idx % 3 == 1 else "missing_info")]
+        progress = {"stage": "denied", "percent": 25}
+        timeline = [{"step": "submitted"}, {"step": "denied"}]
 
         denied_claims += 1 if denials_count > 0 else 0
         rows.append(
@@ -401,27 +372,11 @@ def _seed_demo_denial_dashboard(db: Session, seed_count: int = 10) -> None:
 
     for i in range(demo_existing, seed_count):
         idx = i + 1
-        amount = float(12000 + (idx * 750))
-
+        amount = float(5000.0)
         claim_status = "denied"
-        if idx <= 4:
-            claim_status = "denied"
-            denial_raw = ""
-            denial_types = [{"type": "missing_info", "denial_reason": "", "confidence": 0.0}]
-            add_corr = False
-            add_resub = False
-        elif idx <= 7:
-            claim_status = "resubmitted"
-            denial_raw = "Denied: procedure code mismatch. Please verify CPT/ICD linkage."
-            denial_types = [{"type": "coding_mismatch", "denial_reason": "CPT/ICD mismatch", "confidence": 0.76}]
-            add_corr = True
-            add_resub = True
-        else:
-            claim_status = "approved"
-            denial_raw = "Denied: missing discharge summary. Please attach document and resubmit."
-            denial_types = [{"type": "missing_document", "denial_reason": "Missing discharge summary", "confidence": 0.81}]
-            add_corr = True
-            add_resub = True
+        denial_raw = ""
+        denial_type = "missing_document" if idx % 3 == 0 else ("coding_mismatch" if idx % 3 == 1 else "missing_info")
+        denial_types = [{"type": denial_type}]
 
         claim = Claim(
             status=claim_status,
@@ -440,37 +395,11 @@ def _seed_demo_denial_dashboard(db: Session, seed_count: int = 10) -> None:
             claim_id=claim.id,
             status="denied",
             raw_reason_text=denial_raw,
-            rejection_codes=["MD01"] if not denial_raw else ["CD09"],
+            rejection_codes=[],
             structured_reasons=denial_types,
             source_meta={"source": "demo_seed"},
         )
         db.add(ev)
-        db.flush()
-
-        corr_id: Optional[int] = None
-        if add_corr:
-            corr = CorrectionApplied(
-                claim_id=claim.id,
-                denial_event_id=ev.id,
-                strategy_id="demo_fix",
-                actions=[{"type": "update_claim", "field": "attachments", "value": ["discharge_summary"]}],
-                patch=[{"op": "add", "path": "/attachments/-", "value": "discharge_summary"}],
-                confidence=0.82,
-                meta={"source": "demo_seed"},
-            )
-            db.add(corr)
-            db.flush()
-            corr_id = corr.id
-
-        if add_resub:
-            resub = Resubmission(
-                claim_id=claim.id,
-                correction_id=corr_id,
-                resubmitted_claim={"status": "resubmitted", "claim_id": claim.id},
-                validation={"ok": True, "confidence": 0.8},
-                outcome="approved" if claim_status == "approved" else "pending",
-            )
-            db.add(resub)
 
     db.commit()
 
