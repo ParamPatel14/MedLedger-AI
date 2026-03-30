@@ -81,6 +81,12 @@
   background: var(--surface);
 }
 
+.navLink.active {
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 12%, var(--surface));
+  color: var(--text-strong);
+}
+
 .ctaLink {
   border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
   background: color-mix(in srgb, var(--primary) 15%, var(--surface));
@@ -106,6 +112,26 @@
   font-size: 54px;
   line-height: 1.05;
   letter-spacing: -1.2px;
+}
+
+.heroMeta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.heroPill {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border));
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  box-shadow: 0 12px 35px rgba(2, 6, 23, 0.06);
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--text-strong);
 }
 
 .heroSubtitle {
@@ -156,6 +182,8 @@
 .btnPrimary {
   border-color: color-mix(in srgb, var(--primary) 50%, var(--border));
   background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: white;
+  box-shadow: 0 18px 55px rgba(37, 99, 235, 0.22);
 }
 
 .btnGhost {
@@ -284,6 +312,136 @@
   padding: 34px 0;
 }
 
+.flowSection {
+  padding-top: 12px;
+}
+
+.flowCard {
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background:
+    radial-gradient(circle at 12% 10%, rgba(37, 99, 235, 0.08), transparent 55%),
+    radial-gradient(circle at 92% 12%, rgba(124, 58, 237, 0.08), transparent 55%),
+    radial-gradient(circle at 55% 120%, rgba(6, 182, 212, 0.08), transparent 55%),
+    linear-gradient(180deg, color-mix(in srgb, var(--surface) 92%, #eef2ff), var(--surface));
+  box-shadow: 0 22px 70px rgba(2, 6, 23, 0.12);
+  padding: 22px;
+  margin: 0 -16px;
+  overflow: visible;
+}
+
+.flowKpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 2px 6px 14px;
+}
+
+.flowHint {
+  padding: 0 8px 10px;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.flowKpi {
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  background: color-mix(in srgb, var(--surface) 78%, transparent);
+  box-shadow: 0 14px 45px rgba(2, 6, 23, 0.08);
+  padding: 16px 16px;
+}
+
+.flowKpiLabel {
+  font-size: 12px;
+  font-weight: 750;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.flowKpiValue {
+  margin-top: 6px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--text-strong);
+}
+
+.flowSvg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.flowSvg path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.flowEdges .flowEdge {
+  fill: none;
+  opacity: 0.95;
+  stroke-dasharray: 1;
+  animation: flowGlow 3.4s ease-in-out infinite;
+}
+
+.flowEdges .flowEdge.flowEdge--audit {
+  opacity: 0.8;
+  animation: flowDash 8s linear infinite;
+}
+
+.flowEdgeLabel {
+  font-size: 12px;
+  font-weight: 800;
+  fill: rgba(15, 23, 42, 0.60);
+}
+
+.flowNodes .flowNodeTitle {
+  font-size: 16px;
+  font-weight: 900;
+  fill: rgba(15, 23, 42, 0.92);
+}
+
+.flowNodes .flowNodeSub {
+  font-size: 13px;
+  font-weight: 750;
+  fill: rgba(15, 23, 42, 0.62);
+}
+
+.flowNodes .flowNodeChip {
+  font-size: 12px;
+  font-weight: 950;
+  fill: rgba(15, 23, 42, 0.86);
+}
+
+.flowNodes .flowNode {
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: opacity 200ms ease;
+}
+
+@keyframes flowDash {
+  to {
+    stroke-dashoffset: -160;
+  }
+}
+
+@keyframes flowGlow {
+  0%,
+  100% {
+    opacity: 0.92;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flowEdges .flowEdge {
+    animation: none;
+    transition: none;
+  }
+}
+
 .sectionHeader {
   display: flex;
   flex-direction: column;
@@ -397,5 +555,13 @@
 
   .grid2 {
     grid-template-columns: 1fr;
+  }
+
+  .flowKpis {
+    grid-template-columns: 1fr;
+  }
+
+  .flowCard {
+    margin: 0;
   }
 }
