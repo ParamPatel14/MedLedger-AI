@@ -90,7 +90,7 @@ flowchart TD
   C --> E[RootCauseEngine]
   C --> F[CorrectionEngine]
   C --> G[ResubmissionEngine]
-  C --> H[LearningService (outcomes)]
+  C --> H[LearningService]
   C --> I[(Claims/Denial tables)]
   I --> J[Denial Dashboard API]
   J --> K[Business Impact UI]
